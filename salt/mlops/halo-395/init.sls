@@ -174,7 +174,7 @@ strix_x2_user_bashrc_path:
       - user: strix_x2_user_account
 
 # ==============================================================================
-# 8. Download Qwen3-Coder-30B-A3B & Qwen3.8-Flash-Next + MTP + Sharp Template
+# 8. Download Qwen3-Coder-30B-A3B & Qwen3.8-Flash-Next + Sharp Template
 # ==============================================================================
 strix_x2_download_qwen3_coder_30b:
   cmd.run:
@@ -197,18 +197,6 @@ strix_x2_download_flash_next:
     - runas: {{ user }}
     - creates: {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00003.gguf
     - timeout: 7200
-    - require:
-      - cmd: strix_x2_install_hf_cli
-
-strix_x2_download_flash_mtp:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF
-        mtp-Qwen3.8-Flash-Next-hc-Q8_0.gguf
-        --local-dir {{ flash_dir }}
-    - runas: {{ user }}
-    - creates: {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-hc-Q8_0.gguf
-    - timeout: 1800
     - require:
       - cmd: strix_x2_install_hf_cli
 
@@ -282,11 +270,8 @@ strix_x2_models_preset_ini:
 
         [Qwen3.8-Flash-Next-Low]
         model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-hc-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
         flash-attn = 1
         jinja = true
         chat-template-file = {{ flash_dir }}/chat_template.jinja
@@ -294,7 +279,7 @@ strix_x2_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-mtp
-        spec-draft-n-max = 4
+        spec-draft-n-max = 2
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
@@ -308,11 +293,8 @@ strix_x2_models_preset_ini:
 
         [Qwen3.8-Flash-Next-Medium]
         model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-hc-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
         flash-attn = 1
         jinja = true
         chat-template-file = {{ flash_dir }}/chat_template.jinja
@@ -320,7 +302,7 @@ strix_x2_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-mtp
-        spec-draft-n-max = 4
+        spec-draft-n-max = 2
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
@@ -334,11 +316,8 @@ strix_x2_models_preset_ini:
 
         [Qwen3.8-Flash-Next-NoThink]
         model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-hc-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
         flash-attn = 1
         jinja = true
         chat-template-file = {{ flash_dir }}/chat_template.jinja
@@ -346,7 +325,7 @@ strix_x2_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-mtp
-        spec-draft-n-max = 4
+        spec-draft-n-max = 2
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
@@ -360,7 +339,6 @@ strix_x2_models_preset_ini:
     - require:
       - cmd: strix_x2_download_qwen3_coder_30b
       - cmd: strix_x2_download_flash_next
-      - cmd: strix_x2_download_flash_mtp
       - cmd: strix_x2_download_sharp_template
 
 # ==============================================================================
@@ -401,6 +379,7 @@ strix_x2_router_systemd_unit:
           --models-preset {{ home }}/models/models.ini \
           --models-max 1 \
           --models-autoload \
+          --jinja \
           --host 0.0.0.0 \
           --port 8080
 
