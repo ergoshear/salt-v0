@@ -32,6 +32,6 @@ jobs:
             state.highstate test=True --retcode-passthrough
 
   salt-apply:
-    name: Apply master configuration
+    name: Apply local highstate
     needs: salt-test
     uses: ./.github/workflows/salt-apply.yml

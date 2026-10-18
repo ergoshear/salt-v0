@@ -14,9 +14,10 @@ or apply the proposed state changes. Salt failures propagate to the job via
 `--retcode-passthrough`.
 
 Only after the dry-run job succeeds, it calls the reusable
-[Salt master apply workflow](.github/workflows/salt-apply.yml). This checks out
-the same commit on `salt-master-01` and runs `state.apply salt.master` locally
-using the absolute roots below. Apply failures also fail the workflow.
+[Salt highstate apply workflow](.github/workflows/salt-apply.yml). This checks out
+the same commit on `salt-master-01` and runs `state.highstate` locally,
+applying all states matched by `salt/top.sls` using the absolute roots below.
+It does not target remote minions. Apply failures also fail the workflow.
 Workflow runs are serialized to avoid overlapping test/apply runs against the
 shared checkout.
 

@@ -1,4 +1,4 @@
-name: Salt master apply
+name: Salt highstate apply
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   salt-apply:
-    name: Apply salt.master
+    name: Apply local highstate
     runs-on: [self-hosted, salt-master-01]
     timeout-minutes: 30
     steps:
@@ -18,9 +18,9 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Apply master configuration
+      - name: Apply all local states
         run: |
           sudo -n salt-call --local \
             --file-root=/srv/actions-runner/_work/salt/salt/salt \
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
-            state.apply salt.master --retcode-passthrough
+            state.highstate --retcode-passthrough
