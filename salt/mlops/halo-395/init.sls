@@ -364,15 +364,8 @@ strix_x2_models_preset_ini:
       - cmd: strix_x2_download_sharp_template
 
 # ==============================================================================
-# 11. Systemd User Lingering & strix-llama-router.service
+# 11. Systemd User Directory & strix-llama-router.service
 # ==============================================================================
-strix_x2_enable_linger:
-  cmd.run:
-    - name: loginctl enable-linger {{ user }}
-    - creates: /var/lib/systemd/linger/{{ user }}
-    - require:
-      - user: strix_x2_user_account
-
 strix_x2_systemd_user_dir:
   file.directory:
     - name: {{ home }}/.config/systemd/user
