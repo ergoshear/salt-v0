@@ -33,7 +33,18 @@ dedicated AWS TuneD profile in its standard packages.
 The `k3s` state applies only to the `k3s-control-plane-01` minion. It runs the
 official `https://get.k3s.io` installer if `/usr/local/bin/k3s` is not already
 installed. Salt applies states as root, so the installer runs with the
-privileges it requires.
+privileges it requires. When the server node token exists, the state pushes it
+to the master using Salt's file-receive facility. The master-side external
+pillar publishes it as `K3S_TOKEN`. Its `/etc/rancher/k3s/config.yaml` sets the
+standard `node-role.kubernetes.io/control-plane=true:NoSchedule` taint, so new
+workloads are not scheduled on this node. Existing pods are not evicted by this
+taint.
+
+The master configuration enables `file_recv` for this transfer. The external
+pillar reads the pushed token from the master cache and does not expose it in
+command output or logs. `K3S_TOKEN` is included in pillar data for all
+authenticated minions; treat it as a cluster secret available to every
+minion. The token is held outside the repository and is not committed.
 
 ## Salt master
 
