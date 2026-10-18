@@ -28,6 +28,13 @@ creates a custom `aws` profile inheriting the `virtual-guest` profile, and
 activates it. The `aws` name is custom because Fedora does not provide a
 dedicated AWS TuneD profile in its standard packages.
 
+## k3s control plane
+
+The `k3s` state applies only to the `k3s-control-plane-01` minion. It runs the
+official `https://get.k3s.io` installer if `/usr/local/bin/k3s` is not already
+installed. Salt applies states as root, so the installer runs with the
+privileges it requires.
+
 ## Salt master
 
 The `salt.master` state applies only to the `salt-master-01` minion in
