@@ -5,3 +5,4 @@ default-system-pkgs:
        - tree
        - net-tools
        - glances
+       - dotnet-sdk-10.0

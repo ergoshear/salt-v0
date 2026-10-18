@@ -1,0 +1,28 @@
+name: Salt dry run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  salt-test:
+    name: Test local highstate
+    runs-on: [self-hosted, salt-master-01]
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run Salt in test mode
+        run: |
+          sudo -n salt-call --local \
+            --file-root="$GITHUB_WORKSPACE/salt" \
+            --pillar-root="$GITHUB_WORKSPACE/pillar" \
+            state.highstate test=True --retcode-passthrough
