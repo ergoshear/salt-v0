@@ -224,19 +224,28 @@ strix_x2_download_sharp_template:
       - cmd: strix_x2_install_hf_cli
 
 # ==============================================================================
-# 9. Create the Strix Halo Vulkan RADV Toolbx Container
+# 9. Enable Linger & Create the Strix Halo Vulkan RADV Toolbx Container
 # ==============================================================================
+strix_x2_enable_linger:
+  cmd.run:
+    - name: loginctl enable-linger {{ user }}
+    - creates: /var/lib/systemd/linger/{{ user }}
+    - require:
+      - user: strix_x2_user_account
+
 strix_x2_create_vulkan_toolbox:
   cmd.run:
-    - name: >
-        toolbox --assumeyes create llama-vulkan-radv
-        --image docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
-        -- --device /dev/dri
-        --group-add keep-groups
-        --security-opt seccomp=unconfined
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        toolbox --assumeyes create llama-vulkan-radv \
+          --image docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv
     - runas: {{ user }}
-    - unless: podman container exists llama-vulkan-radv
+    - unless: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        podman container exists llama-vulkan-radv
     - require:
+      - cmd: strix_x2_enable_linger
       - file: strix_x2_local_share_dir
       - file: strix_x2_memlock_limits
       - cmd: strix_x2_podman_migrate
