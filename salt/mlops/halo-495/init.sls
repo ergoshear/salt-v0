@@ -5,7 +5,7 @@
 {% set kargs = 'amd_iommu=off amdgpu.gttsize=184320 ttm.pages_limit=47185920 ttm.page_pool_size=47185920 amdgpu.cwsr_enable=0 numa_balancing=disable' %}
 
 # ==============================================================================
-# 1. Base Packages & System Dependencies
+# 1. Base Packages & System Dependencies (Uses wget2-wget for Fedora 44 RPM match)
 # ==============================================================================
 strix_base_packages:
   pkg.installed:
@@ -14,7 +14,7 @@ strix_base_packages:
       - toolbox
       - python3-pip
       - git
-      - wget
+      - wget2-wget
       - jq
       - tuned
       - firewalld
@@ -242,7 +242,7 @@ strix_create_vulkan_toolbox:
       - cmd: strix_podman_migrate
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini for llama-server Router Mode
+# 10. Manage ~/models/models.ini for llama-server Router Mode (With fit = off)
 # ==============================================================================
 strix_models_preset_ini:
   file.managed:
@@ -254,6 +254,7 @@ strix_models_preset_ini:
     - contents: |
         [GLM-5.3-Flash]
         model = {{ glm_dir }}/UD-IQ4_XS/GLM-5.3-Flash-UD-IQ4_XS-00001-of-00005.gguf
+        fit = off
         n-gpu-layers = 999
         load-mode = none
         flash-attn = 1
@@ -269,7 +270,32 @@ strix_models_preset_ini:
         temp = 1.0
         top-p = 0.95
 
-        [Qwen3.8-27B]
+        [Qwen3.8-27B-Low]
+        model = {{ qwen_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen_dir }}/Qwen3.8-27B-DFlash2-IQ4_XS.gguf
+        fit = off
+        n-gpu-layers = 999
+        n-gpu-layers-draft = 999
+        load-mode = none
+        flash-attn = 1
+        jinja = true
+        chat-template-file = {{ qwen_dir }}/chat_template.jinja
+        chat-template-kwargs = {"reasoning_effort":"low"}
+        no-reasoning-preserve = true
+        parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 4
+        cache-type-k = q8_0
+        cache-type-v = q8_0
+        ctx-size = 262144
+        ubatch-size = 1024
+        batch-size = 4096
+        threads = 16
+        temp = 1.0
+        top-p = 0.95
+        top-k = 20
+
+        [Qwen3.8-27B-Medium]
         model = {{ qwen_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
         model-draft = {{ qwen_dir }}/Qwen3.8-27B-DFlash2-IQ4_XS.gguf
         fit = off
@@ -292,6 +318,31 @@ strix_models_preset_ini:
         threads = 16
         temp = 1.0
         top-p = 0.95
+        top-k = 20
+
+        [Qwen3.8-27B-NoThink]
+        model = {{ qwen_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen_dir }}/Qwen3.8-27B-DFlash2-IQ4_XS.gguf
+        fit = off
+        n-gpu-layers = 999
+        n-gpu-layers-draft = 999
+        load-mode = none
+        flash-attn = 1
+        jinja = true
+        chat-template-file = {{ qwen_dir }}/chat_template.jinja
+        chat-template-kwargs = {"enable_thinking":false}
+        no-reasoning-preserve = true
+        parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 4
+        cache-type-k = q8_0
+        cache-type-v = q8_0
+        ctx-size = 262144
+        ubatch-size = 1024
+        batch-size = 4096
+        threads = 16
+        temp = 0.7
+        top-p = 0.80
         top-k = 20
     - require:
       - cmd: strix_download_glm_model
@@ -319,7 +370,6 @@ strix_systemd_user_dir:
     - require:
       - user: strix_user_account
 
-# Stop and disable any older standalone glm/qwen services if they exist
 {% for old_svc in ['glm-llama-server.service', 'qwen-llama-server.service'] %}
 disable_old_{{ old_svc }}:
   cmd.run:
