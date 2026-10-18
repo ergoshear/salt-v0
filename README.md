@@ -21,6 +21,13 @@ It does not target remote minions. Apply failures also fail the workflow.
 Workflow runs are serialized to avoid overlapping test/apply runs against the
 shared checkout.
 
+## TuneD
+
+The `system.tuned` state applies to all minions. It installs and enables TuneD,
+creates a custom `aws` profile inheriting the `virtual-guest` profile, and
+activates it. The `aws` name is custom because Fedora does not provide a
+dedicated AWS TuneD profile in its standard packages.
+
 ## Salt master
 
 The `salt.master` state applies only to the `salt-master-01` minion in
