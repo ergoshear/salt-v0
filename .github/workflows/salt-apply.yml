@@ -1,0 +1,26 @@
+name: Salt master apply
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  salt-apply:
+    name: Apply salt.master
+    runs-on: [self-hosted, salt-master-01]
+    timeout-minutes: 30
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Apply master configuration
+        run: |
+          sudo -n salt-call --local \
+            --file-root=/srv/actions-runner/_work/salt/salt/salt \
+            --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
+            state.apply salt.master --retcode-passthrough

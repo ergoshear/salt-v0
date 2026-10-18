@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: salt-master-01
+  cancel-in-progress: false
+
 jobs:
   salt-test:
     name: Test local highstate
@@ -26,3 +30,8 @@ jobs:
             --file-root="$GITHUB_WORKSPACE/salt" \
             --pillar-root="$GITHUB_WORKSPACE/pillar" \
             state.highstate test=True --retcode-passthrough
+
+  salt-apply:
+    name: Apply master configuration
+    needs: salt-test
+    uses: ./.github/workflows/salt-apply.yml
