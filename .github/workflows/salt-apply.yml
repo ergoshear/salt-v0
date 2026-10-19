@@ -36,6 +36,7 @@ jobs:
             --file-root=/srv/actions-runner/_work/salt/salt/salt \
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
             state.apply salt.master queue=True --retcode-passthrough
+          sudo -n systemctl restart salt-master
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"

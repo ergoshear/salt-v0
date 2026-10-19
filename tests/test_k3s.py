@@ -28,6 +28,7 @@ def load(name, path):
 PILLAR = load("pillar", "salt/salt/k3s_token_pillar.py")
 PROVISION = load("provision", "salt/tailscale/provision.py")
 NODE = load("node", "salt/tailscale/node.py")
+DEPLOY = load("deploy", "salt/tailscale/deploy.py")
 
 
 def render(state, node, pillar=None):
@@ -212,6 +213,20 @@ class StateTests(unittest.TestCase):
 
 
 class EnrollmentTests(unittest.TestCase):
+    @patch.object(DEPLOY.subprocess, "run")
+    def test_failed_remote_state_is_identified_and_secrets_are_redacted(self, execute):
+        execute.return_value.returncode = 0
+        execute.return_value.stdout = json.dumps({"mlops-node-0": {
+            "test_|-tailscale-missing-enrollment_|-Missing enrollment pillar_|-fail": {
+                "result": False, "name": "Missing enrollment pillar",
+                "comment": "Failure!", "changes": {"stderr": "tskey-auth-test-secret"},
+            },
+        }})
+        with self.assertRaises(RuntimeError) as error:
+            DEPLOY.salt(["mlops-node-0"], "state.apply", "tailscale")
+        self.assertIn("Missing enrollment pillar", str(error.exception))
+        self.assertNotIn("tskey-auth-test-secret", str(error.exception))
+
     @patch.object(NODE.subprocess, "run")
     @patch.object(NODE, "run")
     @patch.object(NODE, "status", return_value={"BackendState": "Running"})

@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import time
 
@@ -24,8 +25,14 @@ def salt(nodes, function, *arguments):
             if not isinstance(response, dict) or not response:
                 raise RuntimeError(f"{node}: invalid state response: {response}")
             failed = [
-                value.get("comment", "state failed") if isinstance(value, dict) else str(value)
-                for value in response.values()
+                re.sub(r"tskey-[A-Za-z0-9_-]+", "[REDACTED]", (
+                    f"{state_id}: {value.get('name')}: {value.get('comment')}: "
+                    + json.dumps({
+                        key: value.get("changes", {}).get(key)
+                        for key in ["stdout", "stderr"]
+                    })
+                )) if isinstance(value, dict) else str(value)
+                for state_id, value in response.items()
                 if not isinstance(value, dict) or value.get("result") is not True
             ]
             if failed:
