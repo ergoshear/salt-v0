@@ -37,6 +37,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: main
           persist-credentials: false
 
       - name: Run Salt in test mode

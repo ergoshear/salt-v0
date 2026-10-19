@@ -4,7 +4,9 @@
 
 The [test workflow](.github/workflows/salt-test.yml) runs configuration tests
 on a GitHub-hosted runner, then a local `salt.master` dry run on the
-`self-hosted`, `salt-master-01` runner. Only after success does it call the
+`self-hosted`, `salt-master-01` runner, checking out `main` for both the dry
+run and apply so the master's configured file roots receive the main checkout.
+Only after success does it call the
 [apply workflow](.github/workflows/salt-apply.yml), explicitly forwarding
 the required `TS_API_KEY` GitHub Actions secret. A manual apply skips the
 dry-run gate. The push workflow serializes runs against the shared checkout.

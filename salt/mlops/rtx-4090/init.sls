@@ -21,7 +21,7 @@ rtx4090_base_packages:
       - kernel-headers
 
 # ==============================================================================
-# 2. Enable NVIDIA Driver Repositories (RPM Fusion for Fedora / EPEL for Enterprise Linux)
+# 2. Enable NVIDIA Driver Repositories (RPM Fusion for Fedora / EPEL for RHEL)
 # ==============================================================================
 {% if grains['os'] == 'Fedora' %}
 rtx4090_nvidia_driver_repos:
@@ -101,7 +101,7 @@ rtx4090_nvidia_persistenced:
     - require:
       - cmd: rtx4090_build_and_load_kmod
 
-# Generate CDI Spec (/etc/cdi/nvidia.yaml) + Persistence Hook Across Driver Updates
+# Generate CDI Spec (/etc/cdi/nvidia.yaml) for Rootless Podman GPU Passthrough
 rtx4090_generate_nvidia_cdi:
   cmd.run:
     - name: |
@@ -303,7 +303,7 @@ rtx4090_pull_llama_cuda_image:
       - cmd: rtx4090_podman_migrate
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini for Muse-Glimmer-30B (Full 131K Context in 24GB VRAM)
+# 10. Manage ~/models/models.ini for Muse-Glimmer-30B (128K, 256K, 512K & Vision)
 # ==============================================================================
 rtx4090_models_preset_ini:
   file.managed:
@@ -313,7 +313,7 @@ rtx4090_models_preset_ini:
     - mode: '0644'
     - makedirs: True
     - contents: |
-        [Muse-Glimmer-30B]
+        [Muse-Glimmer-30B-128K]
         model = {{ glimmer_dir }}/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
         model-draft = {{ glimmer_dir }}/dflash-Muse-Glimmer-30B-Q4_K_M.gguf
         fit = off
@@ -331,6 +331,52 @@ rtx4090_models_preset_ini:
         ubatch-size = 1024
         batch-size = 4096
         threads = 8
+        temp = 1.0
+        top-p = 0.95
+        top-k = 64
+
+        [Muse-Glimmer-30B-256K-VRAM]
+        model = {{ glimmer_dir }}/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
+        model-draft = {{ glimmer_dir }}/dflash-Muse-Glimmer-30B-Q4_K_M.gguf
+        fit = off
+        n-gpu-layers = 999
+        n-gpu-layers-draft = 999
+        flash-attn = 1
+        jinja = true
+        no-reasoning-preserve = true
+        parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 4
+        cache-type-k = q4_0
+        cache-type-v = q4_0
+        ctx-size = 262144
+        rope-scaling = yarn
+        rope-scale = 2.0
+        yarn-orig-ctx = 131072
+        ubatch-size = 1024
+        batch-size = 4096
+        threads = 8
+        temp = 1.0
+        top-p = 0.95
+        top-k = 64
+
+        [Muse-Glimmer-30B-512K-Hybrid]
+        model = {{ glimmer_dir }}/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
+        fit = off
+        n-gpu-layers = 40
+        flash-attn = 1
+        jinja = true
+        no-reasoning-preserve = true
+        parallel = 1
+        cache-type-k = q4_0
+        cache-type-v = q4_0
+        ctx-size = 524288
+        rope-scaling = yarn
+        rope-scale = 4.0
+        yarn-orig-ctx = 131072
+        ubatch-size = 1024
+        batch-size = 4096
+        threads = 16
         temp = 1.0
         top-p = 0.95
         top-k = 64
@@ -383,7 +429,7 @@ rtx4090_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=RTX 4090 CUDA llama-server Router (Muse-Glimmer-30B + DFlash 131K)
+        Description=RTX 4090 CUDA llama-server Router (Muse-Glimmer-30B + DFlash)
         After=network-online.target
         Wants=network-online.target
 
