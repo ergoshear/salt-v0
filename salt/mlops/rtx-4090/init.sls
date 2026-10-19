@@ -57,7 +57,7 @@ rtx4090_nvidia_packages:
       - cmd: rtx4090_rpmfusion_repos
       - cmd: rtx4090_nvidia_container_toolkit_repo
 
-# Blacklist both nouveau and Fedora 44's nova_core in GRUB
+# Blacklist both nouveau and Fedora 44's nova_core in GRUB & Enable DRM Modeset
 rtx4090_kernel_nvidia_args:
   cmd.run:
     - name: >
@@ -67,7 +67,7 @@ rtx4090_kernel_nvidia_args:
     - require:
       - pkg: rtx4090_nvidia_packages
 
-# Build & Load the NVIDIA Kernel Module Immediately
+# Build & Load the NVIDIA Kernel Module Immediately (Since Secure Boot is Disabled)
 rtx4090_build_and_load_kmod:
   cmd.run:
     - name: |
@@ -81,6 +81,24 @@ rtx4090_build_and_load_kmod:
     - unless: lsmod | grep -q "^nvidia "
     - require:
       - pkg: rtx4090_nvidia_packages
+
+# Enable nvidia-persistenced so the RTX 4090 Stays Initialized & Fast on Idle
+rtx4090_nvidia_persistenced:
+  service.running:
+    - name: nvidia-persistenced
+    - enable: True
+    - require:
+      - cmd: rtx4090_build_and_load_kmod
+
+# Generate CDI Spec (/etc/cdi/nvidia.yaml) for Rootless Podman GPU Passthrough
+rtx4090_generate_nvidia_cdi:
+  cmd.run:
+    - name: |
+        mkdir -p /etc/cdi
+        nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+    - unless: test -s /etc/cdi/nvidia.yaml
+    - require:
+      - service: rtx4090_nvidia_persistenced
 
 # ==============================================================================
 # 4. User Account, Groups, and Rootless Podman SubUID/SubGID Mappings
