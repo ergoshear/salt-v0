@@ -2,6 +2,9 @@ name: Salt highstate apply
 
 on:
   workflow_call:
+    secrets:
+      TS_API_KEY:
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -19,9 +22,20 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Apply all local states
+      - name: Seed master-only Tailscale API credential
+        env:
+          TS_API_KEY: ${{ secrets.TS_API_KEY }}
+        run: |
+          test -n "$TS_API_KEY"
+          sudo -n install -d -m 0700 /etc/salt/tailscale
+          printf '%s' "$TS_API_KEY" | sudo -n sh -c 'umask 077; cat > /etc/salt/tailscale/api-key'
+
+      - name: Bootstrap Salt master and enrollment credentials
         run: |
           sudo -n salt-call --local \
             --file-root=/srv/actions-runner/_work/salt/salt/salt \
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
-            state.highstate --retcode-passthrough
+            state.apply salt.master --retcode-passthrough
+
+      - name: Enroll minions and deploy Kubernetes nodes
+        run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"
