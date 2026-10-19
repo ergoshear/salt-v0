@@ -38,7 +38,8 @@ def api(key, path, payload=None, method=None, headers=None):
         with urlopen(request, timeout=30) as response:
             return json.load(response), response.headers
     except HTTPError as error:
-        detail = json.load(error).get("message", "No API error message")
+        with error:
+            detail = json.load(error).get("message", "No API error message")
         raise RuntimeError(
             f"Tailscale API {request.get_method()} {path}: HTTP {error.code}: {detail}"
         ) from None
@@ -90,7 +91,7 @@ def provision():
                     "preauthorized": True, "tags": tags,
                 }}},
                 "expirySeconds": 3600,
-                "description": "Salt enrollment: " + node,
+                "description": "salt-" + cache.stem[:32],
             })
             secret = result["key"]
             if not secret.startswith("tskey-auth-"):

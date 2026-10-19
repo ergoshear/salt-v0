@@ -86,6 +86,31 @@ class PillarTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    @patch.object(PROVISION.subprocess, "check_output")
+    @patch.object(PROVISION, "api")
+    def test_provision_creates_tagged_keys_with_valid_descriptions(self, api, output):
+        output.return_value = json.dumps({"minions": ["mlops-node-0", "mlops-node-9"]})
+        api.side_effect = lambda key, path, *args: (
+            ({"tagOwners": {
+                "tag:salt-managed": ["autogroup:admin"],
+                "tag:k8s": ["autogroup:admin"],
+            }, "grants": [copy.deepcopy(PROVISION.GRANT)]}, {})
+            if path == "/acl" else ({"key": "tskey-auth-test"}, {})
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "api-key").write_text("test-api-key")
+            with patch.object(PROVISION, "DIRECTORY", path):
+                PROVISION.provision()
+                for call in api.call_args_list[1:]:
+                    payload = call.args[2]
+                    self.assertRegex(payload["description"], r"^salt-[a-f0-9]{32}$")
+                    self.assertTrue(payload["capabilities"]["devices"]["create"]["reusable"])
+                    self.assertEqual(payload["expirySeconds"], 3600)
+                calls = api.call_count
+                PROVISION.provision()
+                self.assertEqual(api.call_count, calls + 1)
+
     @patch.object(PROVISION, "urlopen")
     def test_api_error_preserves_actionable_message_without_credentials(self, open_url):
         open_url.side_effect = HTTPError(
