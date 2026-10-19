@@ -45,10 +45,20 @@ def probe(namespace, index):
     }
 
 
-def verify():
-    nodes = json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
-    for name in ["k3s-control-plane-01", *WORKERS]:
-        node = next(node for node in nodes if node["metadata"]["name"] == name)
+def node_addresses(nodes):
+    control_planes = [
+        node["metadata"]["name"] for node in nodes
+        if "node-role.kubernetes.io/control-plane" in node["metadata"].get("labels", {})
+    ]
+    if len(control_planes) != 1:
+        raise RuntimeError("Expected exactly one labeled Kubernetes control-plane node")
+    by_name = {node["metadata"]["name"]: node for node in nodes}
+    missing = set(WORKERS) - set(by_name)
+    if missing:
+        raise RuntimeError(f"Missing Kubernetes workers: {sorted(missing)}")
+    result = {}
+    for name in [*control_planes, *WORKERS]:
+        node = by_name[name]
         addresses = [
             ipaddress.ip_address(address["address"])
             for address in node["status"]["addresses"]
@@ -58,8 +68,14 @@ def verify():
             address not in ipaddress.ip_network("100.64.0.0/10") for address in addresses
         ):
             raise RuntimeError(f"{name} does not advertise a Tailscale InternalIP")
-        print(f"{name}: Tailscale InternalIP {addresses[0]}", flush=True)
+        result[name] = str(addresses[0])
+    return result
 
+
+def verify():
+    nodes = json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
+    for name, address in node_addresses(nodes).items():
+        print(f"{name}: Tailscale InternalIP {address}", flush=True)
     namespace = "salt-network-check-" + uuid.uuid4().hex[:12]
     kubectl("create", "namespace", namespace)
     try:

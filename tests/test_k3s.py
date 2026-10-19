@@ -147,6 +147,21 @@ class PolicyTests(unittest.TestCase):
 
 
 class StateTests(unittest.TestCase):
+    def test_existing_control_plane_name_is_discovered_without_renaming_it(self):
+        nodes = [{
+            "metadata": {
+                "name": name,
+                "labels": {"node-role.kubernetes.io/control-plane": "true"} if index == 0 else {},
+            },
+            "status": {"addresses": [{"type": "InternalIP", "address": f"100.90.80.{70 + index}"}]},
+        } for index, name in enumerate(["existing-server-hostname", *VERIFY.WORKERS])]
+        self.assertEqual(set(VERIFY.node_addresses(nodes)), {
+            "existing-server-hostname", "mlops-node-0", "mlops-node-1"
+        })
+        nodes[1]["status"]["addresses"][0]["address"] = "192.168.202.10"
+        with self.assertRaisesRegex(RuntimeError, "Tailscale InternalIP"):
+            VERIFY.node_addresses(nodes)
+
     def test_network_probes_are_pinned_to_each_worker_without_service_tokens(self):
         for index, node in enumerate(VERIFY.WORKERS):
             probe = VERIFY.probe("test-network-namespace", index)
