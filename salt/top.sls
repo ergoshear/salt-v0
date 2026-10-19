@@ -2,7 +2,11 @@ base:
   '*':
     - tailscale
     - system.pkgs
+
+  'not L@mlops-node-6,mlops-node-7,mlops-node-9':
+    - match: compound
     - system.tuned
+
   'salt-master-01':
     - salt.master
   'k3s-control-plane-01':
