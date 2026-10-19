@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 from urllib.error import HTTPError
@@ -55,6 +56,12 @@ def merge_policy(policy):
     return policy
 
 
+def write_pillar(path, value):
+    temporary = DIRECTORY / "pillar-write.tmp"
+    temporary.write_text(value)
+    temporary.replace(path)
+
+
 def provision():
     os.umask(0o077)
     DIRECTORY.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -79,8 +86,15 @@ def provision():
             ["salt-key", "--out=json", "--list=accepted"], text=True
         ))["minions"]
         for node in sorted(set(accepted) | {"salt-master-01"}):
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", node):
+                raise ValueError("Salt minion ID is not a safe Tailscale hostname")
+            directory = DIRECTORY / "pillar" / "hosts" / node
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if node == "salt-master-01":
+                write_pillar(directory / "TS_API_KEY", key)
             cache = DIRECTORY / (hashlib.sha256(node.encode()).hexdigest() + ".json")
             if cache.exists() and json.loads(cache.read_text())["expires"] > time.time() + 600:
+                write_pillar(directory / "TAILSCALE_AUTH_KEY", json.loads(cache.read_text())["key"])
                 continue
             tags = ["tag:salt-managed"]
             if node in CLUSTER:
@@ -99,6 +113,7 @@ def provision():
             temporary = cache.with_suffix(".tmp")
             temporary.write_text(json.dumps({"key": secret, "expires": time.time() + 3500}))
             temporary.replace(cache)
+            write_pillar(directory / "TAILSCALE_AUTH_KEY", secret)
         print(f"Tailscale enrollment keys ready for {len(set(accepted) | {'salt-master-01'})} minions")
 
 

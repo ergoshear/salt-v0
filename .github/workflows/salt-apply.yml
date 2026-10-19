@@ -39,7 +39,6 @@ jobs:
           sudo -n systemctl restart salt-master
           sudo -n systemctl show salt-master --property=User --property=ActiveState
           sudo -n salt-run --out=json salt.cmd config.get ext_pillar
-          sudo -n salt-run --out=json salt.cmd config.get pillar_dirs
           sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
             python3 -c 'import json, sys; data = json.load(sys.stdin); print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
 

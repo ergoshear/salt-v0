@@ -11,14 +11,11 @@ salt-master-tailscale-provisioner:
     - source: salt://tailscale/provision.py
     - mode: '0700'
 
-salt-master-k3s-pillar:
-  file.managed:
-    - name: /etc/salt/ext_pillar/k3s_cluster.py
-    - source: salt://salt/k3s_token_pillar.py
-    - user: root
-    - group: root
-    - mode: '0600'
-    - makedirs: True
+salt-master-obsolete-pillar-modules:
+  file.absent:
+    - names:
+      - /etc/salt/ext_pillar/k3s_cluster.py
+      - /var/cache/salt/master/extmods/pillar/k3s_cluster.py
 
 salt-master-config:
   file.managed:
@@ -35,10 +32,13 @@ salt-master-config:
           base:
             - /srv/actions-runner/_work/salt/salt/pillar
         file_recv: True
-        pillar_dirs:
-          - /etc/salt/ext_pillar
         ext_pillar:
-          - k3s_cluster: []
+          - cmd_yaml: /usr/bin/python3 /srv/actions-runner/_work/salt/salt/salt/salt/k3s_token_pillar.py
+          - file_tree:
+              root_dir: /etc/salt/tailscale/pillar
+              follow_dir_links: False
+              template: True
+              render_default: yaml
         schedule:
           highstate:
             function: salt.execute
@@ -106,4 +106,3 @@ salt-master-service:
       - cmd: salt-master-tailscale-credentials
     - watch:
       - file: salt-master-config
-      - file: salt-master-k3s-pillar

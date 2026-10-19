@@ -28,7 +28,7 @@ and advertised tags without logging out or resetting unrelated preferences.
 - Every minion receives `tag:salt-managed`.
 - Only `k3s-control-plane-01`, `mlops-node-0`, and `mlops-node-1` also receive
   `tag:k8s`. Ordinary minions never receive `tag:k8s-operator`.
-- The native external pillar exposes `TS_API_KEY` only to `salt-master-01`.
+- Salt's built-in `file_tree` external pillar exposes `TS_API_KEY` only to `salt-master-01`.
   Each minion receives only its own `TAILSCALE_AUTH_KEY`, not the API key.
 - Enrollment keys are reusable for retries, preauthorized, non-ephemeral,
   tagged, and expire after one hour. Root-only caches are refreshed before
@@ -87,7 +87,7 @@ The `salt.master` state applies only to `salt-master-01`. It manages:
 
 - `file_roots`: `/srv/actions-runner/_work/salt/salt/salt`
 - `pillar_roots`: `/srv/actions-runner/_work/salt/salt/pillar`
-- Native external pillar under `/etc/salt/ext_pillar`, outside Salt's synced cache.
+- Per-minion external pillar files under `/etc/salt/tailscale/pillar/hosts`.
 - `file_recv` for the control-plane token transfer.
 - A `salt.execute` schedule applying highstate to connected minions every
   five minutes, starting five minutes after master startup.

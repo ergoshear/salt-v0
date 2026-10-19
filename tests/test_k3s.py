@@ -1,11 +1,9 @@
 import copy
-import hashlib
 import io
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
-import time
 import unittest
 from urllib.error import HTTPError
 from unittest.mock import patch
@@ -57,33 +55,20 @@ class PillarTests(unittest.TestCase):
         self.path = Path(directory.name)
         self.token = self.path / "token"
         self.token.write_text("test-k3s-token\n")
-        (self.path / "api-key").write_text("test-api-key")
-        for node in CLUSTER | {"salt-master-01", "mlops-node-9"}:
-            cache = self.path / (hashlib.sha256(node.encode()).hexdigest() + ".json")
-            cache.write_text(json.dumps({
-                "key": "test-auth-" + node, "expires": time.time() + 3600,
-            }))
-        patcher = patch.multiple(PILLAR, DIRECTORY=self.path, TOKEN_FILE=self.token)
+        patcher = patch.object(PILLAR, "TOKEN_FILE", self.token)
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_management_key_is_master_only_and_auth_keys_are_per_minion(self):
-        for node in CLUSTER | {"salt-master-01", "mlops-node-9"}:
-            data = PILLAR.ext_pillar(node, {})
-            self.assertEqual("TS_API_KEY" in data, node == "salt-master-01")
-            self.assertEqual(data["TAILSCALE_AUTH_KEY"], "test-auth-" + node)
-            self.assertEqual(data["K3S_TOKEN"], "test-k3s-token")
+    def test_token_pillar_preserves_existing_behavior(self):
+        self.assertEqual(PILLAR.token_pillar(), {"K3S_TOKEN": "test-k3s-token"})
 
-    def test_unknown_minion_cannot_get_another_enrollment_key(self):
-        with self.assertRaisesRegex(RuntimeError, "Missing"):
-            PILLAR.ext_pillar("../../salt-master-01", {})
+    def test_missing_token_does_not_prevent_tailscale_bootstrap(self):
+        self.token.unlink()
+        self.assertEqual(PILLAR.token_pillar(), {})
 
-    def test_expired_key_fails_explicitly(self):
-        node = "mlops-node-0"
-        cache = self.path / (hashlib.sha256(node.encode()).hexdigest() + ".json")
-        cache.write_text(json.dumps({"key": "old", "expires": 0}))
-        with self.assertRaisesRegex(RuntimeError, "expired"):
-            PILLAR.ext_pillar(node, {})
+    def test_empty_token_is_not_published(self):
+        self.token.write_text("")
+        self.assertEqual(PILLAR.token_pillar(), {})
 
 
 class PolicyTests(unittest.TestCase):
@@ -103,6 +88,18 @@ class PolicyTests(unittest.TestCase):
             (path / "api-key").write_text("test-api-key")
             with patch.object(PROVISION, "DIRECTORY", path):
                 PROVISION.provision()
+                root = path / "pillar" / "hosts"
+                self.assertEqual(
+                    {file.parent.name for file in root.glob("*/TS_API_KEY")},
+                    {"salt-master-01"},
+                )
+                self.assertEqual(
+                    {file.parent.name for file in root.glob("*/TAILSCALE_AUTH_KEY")},
+                    {"salt-master-01", "mlops-node-0", "mlops-node-9"},
+                )
+                self.assertEqual((root / "salt-master-01/TS_API_KEY").read_text(), "test-api-key")
+                for secret in root.glob("*/*"):
+                    self.assertEqual(secret.stat().st_mode & 0o777, 0o600)
                 for call in api.call_args_list[1:]:
                     payload = call.args[2]
                     self.assertRegex(payload["description"], r"^salt-[a-f0-9]{32}$")
@@ -209,7 +206,12 @@ class StateTests(unittest.TestCase):
         state = render("salt/master", "salt-master-01")
         self.assertIn("salt-master-tailscale-refresh", state)
         config = yaml.safe_load(options(state, "salt-master-config", "file.managed")["contents"])
-        self.assertEqual(config["ext_pillar"], [{"k3s_cluster": []}])
+        self.assertEqual(config["ext_pillar"][1], {"file_tree": {
+            "root_dir": "/etc/salt/tailscale/pillar",
+            "follow_dir_links": False,
+            "template": True,
+            "render_default": "yaml",
+        }})
 
 
 class EnrollmentTests(unittest.TestCase):
