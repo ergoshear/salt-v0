@@ -52,10 +52,10 @@ def deploy():
     else:
         raise RuntimeError("Salt master did not become ready after bootstrap")
     salt(accepted, "saltutil.refresh_pillar", "wait=True")
-    salt(accepted, "state.apply", "tailscale")
-    salt(["k3s-control-plane-01"], "state.apply", "k3s.control-plane")
+    salt(accepted, "state.apply", "tailscale", "queue=True")
+    salt(["k3s-control-plane-01"], "state.apply", "k3s.control-plane", "queue=True")
     salt(CLUSTER[1:], "saltutil.refresh_pillar", "wait=True")
-    salt(CLUSTER[1:], "state.apply", "k3s.agent")
+    salt(CLUSTER[1:], "state.apply", "k3s.agent", "queue=True")
     result = subprocess.run([
         "salt", "--static", "--out=json", "--timeout=300", "k3s-control-plane-01",
         "cmd.run_all",

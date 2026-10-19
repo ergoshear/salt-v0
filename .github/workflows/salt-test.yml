@@ -44,7 +44,7 @@ jobs:
           sudo -n salt-call --local \
             --file-root="$GITHUB_WORKSPACE/salt" \
             --pillar-root="$GITHUB_WORKSPACE/pillar" \
-            state.apply salt.master test=True --retcode-passthrough
+            state.apply salt.master test=True queue=True --retcode-passthrough
 
   salt-apply:
     name: Apply local highstate
