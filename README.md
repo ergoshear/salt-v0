@@ -21,6 +21,10 @@ It does not target remote minions. Apply failures also fail the workflow.
 Workflow runs are serialized to avoid overlapping test/apply runs against the
 shared checkout.
 
+The apply workflow can also be started directly with **Run workflow** in
+GitHub Actions. A direct run skips the dry-run gate and applies the selected
+commit immediately.
+
 ## TuneD
 
 The `system.tuned` state applies to all minions. It installs and enables TuneD,
