@@ -1,11 +1,13 @@
 import copy
 import hashlib
+import io
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
 import time
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from jinja2 import Environment, StrictUndefined
@@ -84,6 +86,15 @@ class PillarTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    @patch.object(PROVISION, "urlopen")
+    def test_api_error_preserves_actionable_message_without_credentials(self, open_url):
+        open_url.side_effect = HTTPError(
+            "https://api.tailscale.com", 400, "Bad Request", {},
+            io.BytesIO(b'{"message":"requested tags are invalid"}'),
+        )
+        with self.assertRaisesRegex(RuntimeError, "GET /keys: HTTP 400: requested tags"):
+            PROVISION.api("secret-management-key", "/keys")
+
     def test_merge_preserves_existing_policy_and_tag_owners(self):
         policy = {
             "tagOwners": {"tag:k8s": ["tag:k8s-operator"]},

@@ -38,7 +38,10 @@ def api(key, path, payload=None, method=None, headers=None):
         with urlopen(request, timeout=30) as response:
             return json.load(response), response.headers
     except HTTPError as error:
-        raise RuntimeError(f"Tailscale API {request.method} {path}: HTTP {error.code}") from None
+        detail = json.load(error).get("message", "No API error message")
+        raise RuntimeError(
+            f"Tailscale API {request.get_method()} {path}: HTTP {error.code}: {detail}"
+        ) from None
 
 
 def merge_policy(policy):
