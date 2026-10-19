@@ -32,7 +32,7 @@ and advertised tags without logging out or resetting unrelated preferences.
   Each minion receives only its own `TAILSCALE_AUTH_KEY`, not the API key.
 - Enrollment keys are reusable for retries, preauthorized, non-ephemeral,
   tagged, and expire after one hour. Root-only caches are refreshed before
-  expiry by a master cron job every ten minutes, independent of minion pillar.
+  expiry by a master systemd timer every ten minutes, independent of minion pillar.
   Existing enrolled nodes do not need an unexpired auth key to stay connected.
 - The API key itself expires according to Tailscale's management settings;
   rotate the GitHub secret and rerun deployment before expiry.

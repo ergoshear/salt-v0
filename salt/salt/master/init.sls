@@ -56,13 +56,46 @@ salt-master-tailscale-credentials:
       - file: salt-master-tailscale-directory
       - file: salt-master-tailscale-provisioner
 
+salt-master-tailscale-refresh-service:
+  file.managed:
+    - name: /etc/systemd/system/salt-tailscale-refresh.service
+    - mode: '0644'
+    - contents: |
+        [Unit]
+        Description=Refresh Salt Tailscale enrollment credentials
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/python3 /usr/local/sbin/salt-tailscale-provision
+
+salt-master-tailscale-refresh-timer:
+  file.managed:
+    - name: /etc/systemd/system/salt-tailscale-refresh.timer
+    - mode: '0644'
+    - contents: |
+        [Unit]
+        Description=Refresh Salt Tailscale credentials every ten minutes
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=10min
+        [Install]
+        WantedBy=timers.target
+
+salt-master-tailscale-systemd-reload:
+  cmd.run:
+    - name: systemctl daemon-reload
+    - onchanges:
+      - file: salt-master-tailscale-refresh-service
+      - file: salt-master-tailscale-refresh-timer
+
 salt-master-tailscale-refresh:
-  cron.present:
-    - name: /usr/bin/python3 /usr/local/sbin/salt-tailscale-provision
-    - user: root
-    - minute: '*/10'
+  service.running:
+    - name: salt-tailscale-refresh.timer
+    - enable: True
     - require:
       - cmd: salt-master-tailscale-credentials
+      - cmd: salt-master-tailscale-systemd-reload
+    - watch:
+      - file: salt-master-tailscale-refresh-timer
 
 salt-master-service:
   service.running:
