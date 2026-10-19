@@ -1,3 +1,10 @@
+{# Route MLOps GPU nodes to throughput-performance, everything else to aws #}
+{% if grains['id'].startswith('mlops-node-') %}
+  {% set target_profile = 'throughput-performance' %}
+{% else %}
+  {% set target_profile = 'aws' %}
+{% endif %}
+
 tuned-package:
   pkg.installed:
     - name: tuned
@@ -5,13 +12,8 @@ tuned-package:
 aws-tuned-profile:
   file.managed:
     - name: /etc/tuned/aws/tuned.conf
-    - user: root
-    - group: root
-    - mode: '0644'
+    - source: salt://system/files/aws-tuned.conf  # (Keep your existing source/contents block here)
     - makedirs: True
-    - contents: |
-        [main]
-        include=virtual-guest
     - require:
       - pkg: tuned-package
 
@@ -21,13 +23,11 @@ tuned-service:
     - enable: True
     - require:
       - pkg: tuned-package
-    - watch:
       - file: aws-tuned-profile
 
-aws-tuned-profile-active:
+tuned-profile-active:
   cmd.run:
-    - name: tuned-adm profile aws
-    - unless: "tuned-adm active | grep -Fxq 'Current active profile: aws'"
+    - name: tuned-adm profile {{ target_profile }}
+    - unless: tuned-adm active | grep -q "Current active profile: {{ target_profile }}$"
     - require:
       - service: tuned-service
-      - file: aws-tuned-profile
