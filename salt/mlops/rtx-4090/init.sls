@@ -19,18 +19,21 @@ rtx4090_base_packages:
       - pciutils
       - kernel-devel
       - kernel-headers
+      - fedora-workstation-repositories
 
 # ==============================================================================
-# 2. Enable RPM Fusion (Free + Nonfree) & NVIDIA Container Toolkit Repos
+# 2. Enable RPM Fusion (Via download1.rpmfusion.org to Bypass Dead Mirror Redirect)
 # ==============================================================================
 rtx4090_rpmfusion_repos:
   cmd.run:
     - name: |
+        dnf config-manager setopt rpmfusion-nonfree-nvidia-driver.enabled=1 || true
         dnf install -y \
-          "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-          "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+          "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+          "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+        sed -i 's|^metalink=|#metalink=|g; s|^#baseurl=http://download1.rpmfusion.org|baseurl=https://download1.rpmfusion.org|g' /etc/yum.repos.d/rpmfusion-*.repo
         dnf config-manager setopt rpmfusion-free.enabled=1 rpmfusion-free-updates.enabled=1 rpmfusion-nonfree.enabled=1 rpmfusion-nonfree-updates.enabled=1
-    - unless: dnf repolist --enabled | grep -q "^rpmfusion-nonfree"
+    - unless: dnf repolist --enabled | grep -qE "^rpmfusion-nonfree"
     - require:
       - pkg: rtx4090_base_packages
 
