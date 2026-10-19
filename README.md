@@ -66,6 +66,8 @@ for Flannel. K3s's systemd dependency and pre-start check ensure networking
 is available before startup, including after reboot. The first server
 migration changes its InternalIP and restarts k3s, briefly interrupting service.
 The control plane retains its `NoSchedule` taint.
+Salt uses the kubectl bundled with k3s rather than requiring a standalone
+Fedora `kubectl` package, and preserves an existing executable CLI.
 
 Salt enables firewalld on the three Kubernetes nodes, trusts `tailscale0`
 and the default pod/service CIDRs (`10.42.0.0/16`, `10.43.0.0/16`), and enables

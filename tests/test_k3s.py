@@ -196,6 +196,12 @@ class StateTests(unittest.TestCase):
 
     def test_server_retains_taint_and_dns_sans(self):
         state = render("k3s/control-plane", "k3s-control-plane-01")
+        packages = options(state, "k3s-pkgs-install", "pkg.installed")["names"]
+        self.assertNotIn("kubectl", packages)
+        self.assertEqual(
+            options(state, "k3s-kubectl", "file.symlink")["target"],
+            "/usr/local/bin/k3s",
+        )
         config = yaml.safe_load(
             options(state, "k3s-control-plane-config", "file.managed")["contents"]
         )

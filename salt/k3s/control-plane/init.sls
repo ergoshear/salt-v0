@@ -9,7 +9,6 @@ include:
 k3s-pkgs-install:
   pkg.installed:
     - names:
-      - kubectl
       - helm
       - kustomize
 
@@ -75,6 +74,14 @@ k3s-service:
       - file: k3s-control-plane-config
       - file: k3s-control-plane-systemd-network
       - cmd: k3s-tailscale-config
+
+k3s-kubectl:
+  file.symlink:
+    - name: /usr/local/bin/kubectl
+    - target: /usr/local/bin/k3s
+    - unless: test -x /usr/local/bin/kubectl
+    - require:
+      - cmd: k3s-install
 
 k3s-publish-token:
   cmd.run:
