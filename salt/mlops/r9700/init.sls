@@ -167,7 +167,7 @@ r9700_user_bashrc_path:
       - user: r9700_user_account
 
 # ==============================================================================
-# 8. Download Gemma-4-31B-it-QAT (+ mmproj) & Qwen3.6-35B-A3B (+ DFlash Drafter)
+# 8. Download Gemma-4-31B-QAT (+ mmproj + DFlash) & Qwen3.6-35B-A3B (+ DFlash)
 # ==============================================================================
 r9700_download_gemma4_31b_qat:
   cmd.run:
@@ -193,6 +193,18 @@ r9700_download_gemma4_31b_mmproj:
     - require:
       - cmd: r9700_install_hf_cli
 
+r9700_download_gemma4_31b_dflash_drafter:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download williamliao/gemma-4-31B-it-DFlash-GGUF
+        gemma-4-31B-it-DFlash-Q4_K_M.gguf
+        --local-dir {{ gemma4_dir }}
+    - runas: {{ user }}
+    - creates: {{ gemma4_dir }}/gemma-4-31B-it-DFlash-Q4_K_M.gguf
+    - timeout: 1800
+    - require:
+      - cmd: r9700_install_hf_cli
+
 r9700_download_qwen36_35b_a3b:
   cmd.run:
     - name: >
@@ -205,14 +217,17 @@ r9700_download_qwen36_35b_a3b:
     - require:
       - cmd: r9700_install_hf_cli
 
+# Automatically replace the older abhinand DFlash GGUF if it lacks 'dflash.target_layers' metadata
 r9700_download_qwen36_35b_dflash_drafter:
   cmd.run:
     - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download abhinand/Qwen3.6-35B-A3B-DFlash-GGUF
+        rm -f {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf &&
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download williamliao/Qwen3.6-35B-A3B-DFlash-GGUF
         Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
-        --local-dir {{ qwen36_dir }}
+        --local-dir {{ qwen36_dir }} &&
+        touch {{ qwen36_dir }}/.williamliao_dflash_verified
     - runas: {{ user }}
-    - creates: {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
+    - creates: {{ qwen36_dir }}/.williamliao_dflash_verified
     - timeout: 1800
     - require:
       - cmd: r9700_install_hf_cli
@@ -260,35 +275,40 @@ r9700_rebuild_llama_for_host_cpu:
     - name: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        systemctl --user stop r9700-llama-router.service || true
         podman start llama-vulkan-radv
         podman exec --user 0 llama-vulkan-radv bash -e -c '
-          dnf install -y git cmake gcc gcc-c++ binutils ninja-build vulkan-headers vulkan-loader-devel glslc libcurl-devel
+          dnf reinstall -y binutils
+          dnf install -y lld mold git cmake gcc gcc-c++ ninja-build vulkan-headers vulkan-loader-devel glslc libcurl-devel
+          if [ ! -e /usr/bin/ld ]; then
+            ln -sf /usr/bin/ld.bfd /usr/bin/ld || ln -sf /usr/bin/ld.lld /usr/bin/ld
+          fi
           rm -rf /tmp/llama.cpp
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
           cmake -B /tmp/llama.cpp/build -S /tmp/llama.cpp -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DGGML_VULKAN=ON \
-            -DGGML_NATIVE=ON \
-            -DLLAMA_CURL=ON
+            -DGGML_NATIVE=ON
           cmake --build /tmp/llama.cpp/build --config Release -j $(nproc) --target llama-server llama-cli
-          cp -f /tmp/llama.cpp/build/bin/llama-* /usr/local/bin/
-          cp -f /tmp/llama.cpp/build/bin/llama-* /usr/bin/ 2>/dev/null || true
-          cp -f /tmp/llama.cpp/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
-          cp -f /tmp/llama.cpp/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
+          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/local/bin/
+          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/bin/ 2>/dev/null || true
+          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
+          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
           ldconfig
+          touch /etc/llama-built-native-host-cpu
           rm -rf /tmp/llama.cpp
         '
     - runas: {{ user }}
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         podman start llama-vulkan-radv >/dev/null 2>&1
-        podman exec llama-vulkan-radv llama-server --version >/dev/null 2>&1
+        podman exec llama-vulkan-radv test -f /etc/llama-built-native-host-cpu
     - timeout: 1200
     - require:
       - cmd: r9700_create_vulkan_toolbox
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini for llama-server Router Mode (256K Context)
+# 10. Manage ~/models/models.ini for llama-server Router Mode (256K + DFlash)
 # ==============================================================================
 r9700_models_preset_ini:
   file.managed:
@@ -300,15 +320,20 @@ r9700_models_preset_ini:
     - contents: |
         [Gemma-4-31B-QAT-Vision]
         model = {{ gemma4_dir }}/gemma-4-31B-it-qat-UD-Q4_K_XL.gguf
+        model-draft = {{ gemma4_dir }}/gemma-4-31B-it-DFlash-Q4_K_M.gguf
         mmproj = {{ gemma4_dir }}/mmproj-BF16.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
         reasoning = on
         no-reasoning-preserve = true
         parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 4
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
@@ -321,15 +346,20 @@ r9700_models_preset_ini:
 
         [Gemma-4-31B-QAT-NoThink]
         model = {{ gemma4_dir }}/gemma-4-31B-it-qat-UD-Q4_K_XL.gguf
+        model-draft = {{ gemma4_dir }}/gemma-4-31B-it-DFlash-Q4_K_M.gguf
         mmproj = {{ gemma4_dir }}/mmproj-BF16.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
         reasoning = off
         no-reasoning-preserve = true
         parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 4
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
@@ -354,7 +384,7 @@ r9700_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 15
+        spec-draft-n-max = 7
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
@@ -380,7 +410,7 @@ r9700_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 15
+        spec-draft-n-max = 7
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
@@ -394,6 +424,7 @@ r9700_models_preset_ini:
     - require:
       - cmd: r9700_download_gemma4_31b_qat
       - cmd: r9700_download_gemma4_31b_mmproj
+      - cmd: r9700_download_gemma4_31b_dflash_drafter
       - cmd: r9700_download_qwen36_35b_a3b
       - cmd: r9700_download_qwen36_35b_dflash_drafter
       - cmd: r9700_download_sharp_template
