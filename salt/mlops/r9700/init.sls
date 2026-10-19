@@ -167,7 +167,7 @@ r9700_user_bashrc_path:
       - user: r9700_user_account
 
 # ==============================================================================
-# 8. Download Gemma-4-31B-it-QAT (+ mmproj) & Qwen3.6-35B-A3B (+ Sharp Template)
+# 8. Download Gemma-4-31B-it-QAT (+ mmproj) & Qwen3.6-35B-A3B (+ DFlash Drafter)
 # ==============================================================================
 r9700_download_gemma4_31b_qat:
   cmd.run:
@@ -202,6 +202,18 @@ r9700_download_qwen36_35b_a3b:
     - runas: {{ user }}
     - creates: {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
     - timeout: 3600
+    - require:
+      - cmd: r9700_install_hf_cli
+
+r9700_download_qwen36_35b_dflash_drafter:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download abhinand/Qwen3.6-35B-A3B-DFlash-GGUF
+        Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
+        --local-dir {{ qwen36_dir }}
+    - runas: {{ user }}
+    - creates: {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
+    - timeout: 1800
     - require:
       - cmd: r9700_install_hf_cli
 
@@ -296,10 +308,12 @@ r9700_models_preset_ini:
         top-p = 0.90
         top-k = 64
 
-        [Qwen3.6-35B-A3B-Low]
+        [Qwen3.6-35B-A3B-DFlash-Low]
         model = {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
@@ -307,6 +321,9 @@ r9700_models_preset_ini:
         chat-template-kwargs = {"reasoning_effort":"low"}
         no-reasoning-preserve = true
         parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 15
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
@@ -317,10 +334,12 @@ r9700_models_preset_ini:
         top-p = 0.95
         top-k = 20
 
-        [Qwen3.6-35B-A3B-NoThink]
+        [Qwen3.6-35B-A3B-DFlash-NoThink]
         model = {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
@@ -328,6 +347,9 @@ r9700_models_preset_ini:
         reasoning = off
         no-reasoning-preserve = true
         parallel = 1
+        spec-type = draft-dflash
+        spec-draft-n-max = 15
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
@@ -341,6 +363,7 @@ r9700_models_preset_ini:
       - cmd: r9700_download_gemma4_31b_qat
       - cmd: r9700_download_gemma4_31b_mmproj
       - cmd: r9700_download_qwen36_35b_a3b
+      - cmd: r9700_download_qwen36_35b_dflash_drafter
       - cmd: r9700_download_sharp_template
 
 # ==============================================================================
@@ -364,7 +387,7 @@ r9700_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Radeon AI PRO R9700 32GB llama-server Router (Gemma-4-31B-QAT & Qwen3.6-35B-A3B)
+        Description=Radeon AI PRO R9700 32GB llama-server Router (Gemma-4-31B-QAT & Qwen3.6-35B-A3B-DFlash)
         After=network-online.target
         Wants=network-online.target
 
