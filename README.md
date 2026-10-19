@@ -87,7 +87,7 @@ The `salt.master` state applies only to `salt-master-01`. It manages:
 
 - `file_roots`: `/srv/actions-runner/_work/salt/salt/salt`
 - `pillar_roots`: `/srv/actions-runner/_work/salt/salt/pillar`
-- Native external pillar under `/var/cache/salt/master/extmods/pillar`.
+- Native external pillar under `/etc/salt/ext_pillar`, outside Salt's synced cache.
 - `file_recv` for the control-plane token transfer.
 - A `salt.execute` schedule applying highstate to connected minions every
   five minutes, starting five minutes after master startup.

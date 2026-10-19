@@ -213,6 +213,30 @@ class StateTests(unittest.TestCase):
 
 
 class EnrollmentTests(unittest.TestCase):
+    @patch.object(NODE, "status")
+    def test_network_config_uses_real_tailnet_ip_and_is_idempotent(self, status):
+        status.return_value = {
+            "BackendState": "Running",
+            "TailscaleIPs": ["fd7a:115c:a1e0::1234", "100.90.80.70"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "20-tailscale.yaml"
+            with patch.object(NODE, "Path", return_value=path):
+                self.assertTrue(NODE.configure("k3s-control-plane-01"))
+                self.assertFalse(NODE.configure("k3s-control-plane-01"))
+            self.assertEqual(yaml.safe_load(path.read_text()), {
+                "node-ip": "100.90.80.70",
+                "advertise-address": "100.90.80.70",
+                "flannel-iface": "tailscale0",
+            })
+
+    @patch.object(NODE, "status", return_value={"BackendState": "NeedsLogin"})
+    def test_network_config_refuses_unenrolled_or_non_cluster_nodes(self, status):
+        with self.assertRaisesRegex(RuntimeError, "Running"):
+            NODE.configure("mlops-node-0")
+        with self.assertRaisesRegex(ValueError, "three Kubernetes"):
+            NODE.configure("mlops-node-9")
+
     @patch.object(DEPLOY.subprocess, "run")
     def test_failed_remote_state_is_identified_and_secrets_are_redacted(self, execute):
         execute.return_value.returncode = 0

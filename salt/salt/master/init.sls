@@ -13,7 +13,7 @@ salt-master-tailscale-provisioner:
 
 salt-master-k3s-pillar:
   file.managed:
-    - name: /var/cache/salt/master/extmods/pillar/k3s_cluster.py
+    - name: /etc/salt/ext_pillar/k3s_cluster.py
     - source: salt://salt/k3s_token_pillar.py
     - user: root
     - group: root
@@ -35,7 +35,8 @@ salt-master-config:
           base:
             - /srv/actions-runner/_work/salt/salt/pillar
         file_recv: True
-        extension_modules: /var/cache/salt/master/extmods
+        pillar_dirs:
+          - /etc/salt/ext_pillar
         ext_pillar:
           - k3s_cluster: []
         schedule:

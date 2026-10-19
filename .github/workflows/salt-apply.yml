@@ -37,6 +37,14 @@ jobs:
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
             state.apply salt.master queue=True --retcode-passthrough
           sudo -n systemctl restart salt-master
+          sudo -n systemctl show salt-master --property=User --property=ActiveState
+          sudo -n python3 - <<'PY'
+          import salt.config
+          import salt.loader
+          opts = salt.config.master_config("/etc/salt/master")
+          print({key: opts.get(key) for key in ("ext_pillar", "pillar_dirs", "extension_modules")})
+          print("k3s_cluster loader available:", "k3s_cluster" in salt.loader.pillars(opts, {}))
+          PY
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"
