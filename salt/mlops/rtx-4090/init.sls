@@ -316,7 +316,8 @@ rtx4090_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 4
+        spec-draft-n-max = 15
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 131072
@@ -338,7 +339,8 @@ rtx4090_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 4
+        spec-draft-n-max = 15
+        spec-draft-p-min = 0.75
         cache-type-k = q4_0
         cache-type-v = q4_0
         ctx-size = 262144
@@ -385,7 +387,8 @@ rtx4090_models_preset_ini:
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 4
+        spec-draft-n-max = 15
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 98304
