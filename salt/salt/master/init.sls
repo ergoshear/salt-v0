@@ -14,7 +14,7 @@ salt-master-config:
             - /srv/actions-runner/_work/salt/salt/pillar
         file_recv: True
         ext_pillar:
-          - cmd_yaml: /usr/bin/python3 /srv/actions-runner/_work/salt/salt/salt/k3s_token_pillar.py
+          - cmd_yaml: /usr/bin/python3 /srv/actions-runner/_work/salt/salt/salt/salt/k3s_token_pillar.py
         schedule:
           highstate:
             function: salt.execute
