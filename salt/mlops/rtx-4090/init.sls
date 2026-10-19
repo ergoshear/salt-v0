@@ -401,7 +401,7 @@ rtx4090_models_preset_ini:
       - cmd: rtx4090_download_muse_glimmer_mmproj
 
 # ==============================================================================
-# 11. Systemd User Service: rtx4090-llama-router.service (CUDA + CDI Passthrough)
+# 11. Systemd User Service: rtx4090-llama-router.service (Split Start & Restart)
 # ==============================================================================
 rtx4090_systemd_user_dir:
   file.directory:
@@ -465,18 +465,28 @@ rtx4090_enable_and_start_router_service:
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
         systemctl --user daemon-reload
-        systemctl --user enable rtx4090-llama-router.service
-        systemctl --user restart rtx4090-llama-router.service
+        systemctl --user enable --now rtx4090-llama-router.service
     - runas: {{ user }}
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         systemctl --user is-active --quiet rtx4090-llama-router.service
-    - onchanges:
-      - file: rtx4090_router_systemd_unit
-      - file: rtx4090_models_preset_ini
     - require:
       - cmd: rtx4090_enable_linger
       - cmd: rtx4090_generate_nvidia_cdi
       - cmd: rtx4090_pull_llama_cuda_image
       - file: rtx4090_models_preset_ini
       - file: rtx4090_router_systemd_unit
+
+rtx4090_restart_router_on_config_change:
+  cmd.run:
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        systemctl --user daemon-reload
+        systemctl --user restart rtx4090-llama-router.service
+    - runas: {{ user }}
+    - onchanges:
+      - file: rtx4090_router_systemd_unit
+      - file: rtx4090_models_preset_ini
+    - require:
+      - cmd: rtx4090_enable_and_start_router_service
