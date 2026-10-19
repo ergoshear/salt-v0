@@ -229,7 +229,7 @@ r9700_download_sharp_template:
       - cmd: r9700_install_hf_cli
 
 # ==============================================================================
-# 9. Enable Linger & Create the RDNA 4 Vulkan RADV Toolbx Container
+# 9. Enable Linger, Create RDNA 4 Vulkan RADV Toolbx & Compile for Host CPU
 # ==============================================================================
 r9700_enable_linger:
   cmd.run:
@@ -254,6 +254,38 @@ r9700_create_vulkan_toolbox:
       - file: r9700_local_share_dir
       - file: r9700_memlock_limits
       - cmd: r9700_podman_migrate
+
+r9700_rebuild_llama_for_host_cpu:
+  cmd.run:
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        podman start llama-vulkan-radv
+        podman exec --user 0 llama-vulkan-radv bash -e -c '
+          dnf install -y git cmake gcc gcc-c++ binutils ninja-build vulkan-headers vulkan-loader-devel glslc libcurl-devel
+          rm -rf /tmp/llama.cpp
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
+          cmake -B /tmp/llama.cpp/build -S /tmp/llama.cpp -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_VULKAN=ON \
+            -DGGML_NATIVE=ON \
+            -DLLAMA_CURL=ON
+          cmake --build /tmp/llama.cpp/build --config Release -j $(nproc) --target llama-server llama-cli
+          cp -f /tmp/llama.cpp/build/bin/llama-* /usr/local/bin/
+          cp -f /tmp/llama.cpp/build/bin/llama-* /usr/bin/ 2>/dev/null || true
+          cp -f /tmp/llama.cpp/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
+          cp -f /tmp/llama.cpp/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
+          ldconfig
+          rm -rf /tmp/llama.cpp
+        '
+    - runas: {{ user }}
+    - unless: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        podman start llama-vulkan-radv >/dev/null 2>&1
+        podman exec llama-vulkan-radv llama-server --version >/dev/null 2>&1
+    - timeout: 1200
+    - require:
+      - cmd: r9700_create_vulkan_toolbox
 
 # ==============================================================================
 # 10. Manage ~/models/models.ini for llama-server Router Mode (256K Context)
@@ -433,6 +465,7 @@ r9700_enable_and_start_router_service:
     - require:
       - cmd: r9700_enable_linger
       - cmd: r9700_create_vulkan_toolbox
+      - cmd: r9700_rebuild_llama_for_host_cpu
       - file: r9700_models_preset_ini
       - file: r9700_router_systemd_unit
 
@@ -445,6 +478,7 @@ r9700_restart_router_on_config_change:
         systemctl --user restart r9700-llama-router.service
     - runas: {{ user }}
     - onchanges:
+      - cmd: r9700_rebuild_llama_for_host_cpu
       - file: r9700_router_systemd_unit
       - file: r9700_models_preset_ini
     - require:
