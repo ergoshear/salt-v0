@@ -21,30 +21,19 @@ rtx4090_base_packages:
       - kernel-headers
 
 # ==============================================================================
-# 2. Enable NVIDIA Driver Repositories (RPM Fusion for Fedora / EPEL for RHEL)
+# 2. Enable RPM Fusion (Free + Nonfree) & NVIDIA Container Toolkit Repos
 # ==============================================================================
-{% if grains['os'] == 'Fedora' %}
-rtx4090_nvidia_driver_repos:
-  cmd.run:
-    - name: >
-        dnf install -y
-        https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ grains['osmajorrelease'] }}.noarch.rpm
-        https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{ grains['osmajorrelease'] }}.noarch.rpm
-    - unless: rpm -q rpmfusion-nonfree-release
-    - require:
-      - pkg: rtx4090_base_packages
-{% else %}
-rtx4090_nvidia_driver_repos:
+rtx4090_rpmfusion_repos:
   cmd.run:
     - name: |
-        dnf install -y epel-release
-        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel{{ grains['osmajorrelease'] }}/x86_64/cuda-rhel{{ grains['osmajorrelease'] }}.repo
-    - unless: rpm -q epel-release
+        dnf install -y \
+          "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+          "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+        dnf config-manager setopt rpmfusion-free.enabled=1 rpmfusion-free-updates.enabled=1 rpmfusion-nonfree.enabled=1 rpmfusion-nonfree-updates.enabled=1
+    - unless: dnf repolist --enabled | grep -q "^rpmfusion-nonfree"
     - require:
       - pkg: rtx4090_base_packages
-{% endif %}
 
-# Add Official NVIDIA Container Toolkit Repo (For Rootless Podman GPU CDI Passthrough)
 rtx4090_nvidia_container_toolkit_repo:
   cmd.run:
     - name: |
@@ -65,26 +54,26 @@ rtx4090_nvidia_packages:
       - xorg-x11-drv-nvidia-power
       - nvidia-container-toolkit
     - require:
-      - cmd: rtx4090_nvidia_driver_repos
+      - cmd: rtx4090_rpmfusion_repos
       - cmd: rtx4090_nvidia_container_toolkit_repo
 
-# Blacklist nouveau in GRUB & Enable NVIDIA DRM Modeset
+# Blacklist both nouveau and Fedora 44's nova_core in GRUB
 rtx4090_kernel_nvidia_args:
   cmd.run:
     - name: >
         grubby --update-kernel=ALL
-        --args="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
-    - unless: grubby --info=DEFAULT | grep -q "rd.driver.blacklist=nouveau"
+        --args="rd.driver.blacklist=nouveau,nova_core modprobe.blacklist=nouveau,nova_core nvidia-drm.modeset=1"
+    - unless: grubby --info=DEFAULT | grep -q "rd.driver.blacklist=nouveau,nova_core"
     - require:
       - pkg: rtx4090_nvidia_packages
 
-# Build & Load the NVIDIA Kernel Module Immediately (Since Secure Boot is Disabled)
+# Build & Load the NVIDIA Kernel Module Immediately
 rtx4090_build_and_load_kmod:
   cmd.run:
     - name: |
         akmods --force
         dracut --force
-        rmmod nouveau 2>/dev/null || true
+        rmmod nova_core nouveau 2>/dev/null || true
         modprobe nvidia
         modprobe nvidia-uvm
         modprobe nvidia-modeset
@@ -92,24 +81,6 @@ rtx4090_build_and_load_kmod:
     - unless: lsmod | grep -q "^nvidia "
     - require:
       - pkg: rtx4090_nvidia_packages
-
-# Enable nvidia-persistenced so the RTX 4090 Stays Initialized & Fast on Idle
-rtx4090_nvidia_persistenced:
-  service.running:
-    - name: nvidia-persistenced
-    - enable: True
-    - require:
-      - cmd: rtx4090_build_and_load_kmod
-
-# Generate CDI Spec (/etc/cdi/nvidia.yaml) for Rootless Podman GPU Passthrough
-rtx4090_generate_nvidia_cdi:
-  cmd.run:
-    - name: |
-        mkdir -p /etc/cdi
-        nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-    - unless: test -s /etc/cdi/nvidia.yaml
-    - require:
-      - service: rtx4090_nvidia_persistenced
 
 # ==============================================================================
 # 4. User Account, Groups, and Rootless Podman SubUID/SubGID Mappings
