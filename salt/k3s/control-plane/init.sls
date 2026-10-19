@@ -3,6 +3,7 @@ k3s-control-plane-prerequisites:
   test.fail_without_changes:
     - name: k3s control plane requires k3s-control-plane-01
 {% else %}
+{% set helm_job_image = 'rancher/klipper-helm:v0.13.3-build20261014' %}
 include:
   - k3s.network
 
@@ -74,6 +75,30 @@ k3s-service:
       - file: k3s-control-plane-config
       - file: k3s-control-plane-systemd-network
       - cmd: k3s-tailscale-config
+
+k3s-traefik-helm-job-image:
+  cmd.run:
+    - name: >-
+        /usr/local/bin/k3s kubectl patch helmcharts.helm.cattle.io traefik
+        -n kube-system --type=merge
+        -p '{"spec":{"jobImage":"{{ helm_job_image }}"}}'
+    - unless: >-
+        test "$(/usr/local/bin/k3s kubectl get helmcharts.helm.cattle.io traefik
+        -n kube-system -o jsonpath='{.spec.jobImage}')" = "{{ helm_job_image }}"
+    - require:
+      - service: k3s-service
+
+k3s-traefik-crd-helm-job-image:
+  cmd.run:
+    - name: >-
+        /usr/local/bin/k3s kubectl patch helmcharts.helm.cattle.io traefik-crd
+        -n kube-system --type=merge
+        -p '{"spec":{"jobImage":"{{ helm_job_image }}"}}'
+    - unless: >-
+        test "$(/usr/local/bin/k3s kubectl get helmcharts.helm.cattle.io traefik-crd
+        -n kube-system -o jsonpath='{.spec.jobImage}')" = "{{ helm_job_image }}"
+    - require:
+      - service: k3s-service
 
 k3s-kubectl:
   file.symlink:

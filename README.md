@@ -70,6 +70,8 @@ for Flannel. K3s's systemd dependency and pre-start check ensure networking
 is available before startup, including after reboot. The first server
 migration changes its InternalIP and restarts k3s, briefly interrupting service.
 The control plane retains its `NoSchedule` taint.
+Salt pins the Traefik Helm install jobs to the latest patched `klipper-helm`
+image using K3s's supported `HelmChart.spec.jobImage` field.
 Salt uses the kubectl bundled with k3s rather than requiring a standalone
 Fedora `kubectl` package, and preserves an existing executable CLI.
 

@@ -238,6 +238,18 @@ class StateTests(unittest.TestCase):
         self.assertIn("k3s.ergoshear.dev", config["tls-san"])
         self.assertIn("k3s-control-plane-01.tailb11f97.ts.net", config["tls-san"])
 
+    def test_traefik_helm_jobs_use_the_patched_image(self):
+        state = render("k3s/control-plane", "k3s-control-plane-01")
+        image = "rancher/klipper-helm:v0.13.3-build20261014"
+        for state_id, chart in (
+            ("k3s-traefik-helm-job-image", "traefik"),
+            ("k3s-traefik-crd-helm-job-image", "traefik-crd"),
+        ):
+            command = options(state, state_id, "cmd.run")
+            self.assertIn(f"patch helmcharts.helm.cattle.io {chart}", command["name"])
+            self.assertIn(image, command["name"])
+            self.assertIn(image, command["unless"])
+
     def test_master_refresh_is_independent_of_minion_pillar(self):
         state = render("salt/master", "salt-master-01")
         self.assertIn("salt-master-tailscale-refresh", state)
