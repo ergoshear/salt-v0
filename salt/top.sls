@@ -3,7 +3,7 @@ base:
     - tailscale
     - system.pkgs
 
-  'not L@mlops-node-6,mlops-node-7,mlops-node-9':
+  'not L@mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
     - match: compound
     - system.tuned
 
@@ -15,6 +15,8 @@ base:
     - k3s.agent
   'mlops-node-1':
     - k3s.agent
+  'mlops-node-4':
+    - mlops.r9700
   'mlops-node-6':
     - mlops.rtx-4090
   'mlops-node-7':
