@@ -40,7 +40,7 @@ jobs:
           sudo -n systemctl show salt-master --property=User --property=ActiveState
           sudo -n salt-run --out=json salt.cmd config.get ext_pillar
           sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
-            python3 -c 'import json, sys; data = json.load(sys.stdin); print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
+            python3 -c 'import json, sys; data = json.load(sys.stdin); assert isinstance(data, dict), "Pillar compilation failed"; print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"

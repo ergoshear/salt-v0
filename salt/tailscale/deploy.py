@@ -61,6 +61,7 @@ def deploy():
     salt(accepted, "saltutil.refresh_pillar", "wait=True")
     salt(accepted, "state.apply", "tailscale", "queue=True")
     salt(["k3s-control-plane-01"], "state.apply", "k3s.control-plane", "queue=True")
+    subprocess.run(["python3", "/usr/local/sbin/salt-tailscale-provision"], check=True)
     salt(CLUSTER[1:], "saltutil.refresh_pillar", "wait=True")
     salt(CLUSTER[1:], "state.apply", "k3s.agent", "queue=True")
     result = subprocess.run([

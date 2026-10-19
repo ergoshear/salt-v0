@@ -2,6 +2,7 @@ import copy
 import io
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -23,7 +24,6 @@ def load(name, path):
     return module
 
 
-PILLAR = load("pillar", "salt/salt/k3s_token_pillar.py")
 PROVISION = load("provision", "salt/tailscale/provision.py")
 NODE = load("node", "salt/tailscale/node.py")
 DEPLOY = load("deploy", "salt/tailscale/deploy.py")
@@ -55,27 +55,30 @@ class PillarTests(unittest.TestCase):
         self.path = Path(directory.name)
         self.token = self.path / "token"
         self.token.write_text("test-k3s-token\n")
-        patcher = patch.object(PILLAR, "TOKEN_FILE", self.token)
+        patcher = patch.object(PROVISION, "TOKEN_FILE", self.token)
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def test_token_pillar_preserves_existing_behavior(self):
-        self.assertEqual(PILLAR.token_pillar(), {"K3S_TOKEN": "test-k3s-token"})
+        self.assertEqual(PROVISION.read_token(), "test-k3s-token")
 
     def test_missing_token_does_not_prevent_tailscale_bootstrap(self):
         self.token.unlink()
-        self.assertEqual(PILLAR.token_pillar(), {})
+        self.assertEqual(PROVISION.read_token(), "")
 
     def test_empty_token_is_not_published(self):
         self.token.write_text("")
-        self.assertEqual(PILLAR.token_pillar(), {})
+        self.assertEqual(PROVISION.read_token(), "")
 
 
 class PolicyTests(unittest.TestCase):
     @patch.object(PROVISION.subprocess, "check_output")
     @patch.object(PROVISION, "api")
     def test_provision_creates_tagged_keys_with_valid_descriptions(self, api, output):
-        output.return_value = json.dumps({"minions": ["mlops-node-0", "mlops-node-9"]})
+        output.side_effect = lambda command, **kwargs: json.dumps(
+            {"minions": ["mlops-node-0", "mlops-node-9"]}
+            if command[0] == "salt-key" else PROVISION.pwd.getpwuid(os.getuid()).pw_name
+        )
         api.side_effect = lambda key, path, *args: (
             ({"tagOwners": {
                 "tag:salt-managed": ["autogroup:admin"],
@@ -206,7 +209,7 @@ class StateTests(unittest.TestCase):
         state = render("salt/master", "salt-master-01")
         self.assertIn("salt-master-tailscale-refresh", state)
         config = yaml.safe_load(options(state, "salt-master-config", "file.managed")["contents"])
-        self.assertEqual(config["ext_pillar"][1], {"file_tree": {
+        self.assertEqual(config["ext_pillar"][0], {"file_tree": {
             "root_dir": "/etc/salt/tailscale/pillar",
             "follow_dir_links": False,
             "template": True,

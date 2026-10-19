@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import subprocess
 import time
@@ -20,6 +21,17 @@ GRANT = {
     "dst": ["tag:k8s"],
     "ip": ["tcp:6443", "tcp:10250", "udp:8472"],
 }
+TOKEN_FILE = Path(
+    "/var/cache/salt/master/minions/"
+    "k3s-control-plane-01/files/k3s-control-plane-01/k3s-token"
+)
+
+
+def read_token():
+    try:
+        return TOKEN_FILE.read_text().strip()
+    except FileNotFoundError:
+        return ""
 
 
 def api(key, path, payload=None, method=None, headers=None):
@@ -56,9 +68,10 @@ def merge_policy(policy):
     return policy
 
 
-def write_pillar(path, value):
+def write_pillar(path, value, owner):
     temporary = DIRECTORY / "pillar-write.tmp"
     temporary.write_text(value)
+    os.chown(temporary, owner.pw_uid, owner.pw_gid)
     temporary.replace(path)
 
 
@@ -70,6 +83,13 @@ def provision():
         key = (DIRECTORY / "api-key").read_text().strip()
         if not key:
             raise ValueError("TS_API_KEY is empty")
+        user = json.loads(subprocess.check_output(
+            ["salt-run", "--out=json", "salt.cmd", "config.get", "user"], text=True
+        ))
+        owner = pwd.getpwnam(user)
+        os.chown(DIRECTORY, -1, owner.pw_gid)
+        DIRECTORY.chmod(0o710)
+        token = read_token()
         policy, headers = api(key, "/acl")
         original = json.dumps(policy, sort_keys=True)
         merge_policy(policy)
@@ -90,11 +110,18 @@ def provision():
                 raise ValueError("Salt minion ID is not a safe Tailscale hostname")
             directory = DIRECTORY / "pillar" / "hosts" / node
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for folder in [DIRECTORY / "pillar", DIRECTORY / "pillar" / "hosts", directory]:
+                os.chown(folder, owner.pw_uid, owner.pw_gid)
+                folder.chmod(0o700)
             if node == "salt-master-01":
-                write_pillar(directory / "TS_API_KEY", key)
+                write_pillar(directory / "TS_API_KEY", key, owner)
+            if token:
+                write_pillar(directory / "K3S_TOKEN", token, owner)
+            elif (directory / "K3S_TOKEN").exists():
+                (directory / "K3S_TOKEN").unlink()
             cache = DIRECTORY / (hashlib.sha256(node.encode()).hexdigest() + ".json")
             if cache.exists() and json.loads(cache.read_text())["expires"] > time.time() + 600:
-                write_pillar(directory / "TAILSCALE_AUTH_KEY", json.loads(cache.read_text())["key"])
+                write_pillar(directory / "TAILSCALE_AUTH_KEY", json.loads(cache.read_text())["key"], owner)
                 continue
             tags = ["tag:salt-managed"]
             if node in CLUSTER:
@@ -113,7 +140,7 @@ def provision():
             temporary = cache.with_suffix(".tmp")
             temporary.write_text(json.dumps({"key": secret, "expires": time.time() + 3500}))
             temporary.replace(cache)
-            write_pillar(directory / "TAILSCALE_AUTH_KEY", secret)
+            write_pillar(directory / "TAILSCALE_AUTH_KEY", secret, owner)
         print(f"Tailscale enrollment keys ready for {len(set(accepted) | {'salt-master-01'})} minions")
 
 

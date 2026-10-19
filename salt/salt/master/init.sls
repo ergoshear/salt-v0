@@ -2,8 +2,6 @@ salt-master-tailscale-directory:
   file.directory:
     - name: /etc/salt/tailscale
     - user: root
-    - group: root
-    - mode: '0700'
 
 salt-master-tailscale-provisioner:
   file.managed:
@@ -33,7 +31,6 @@ salt-master-config:
             - /srv/actions-runner/_work/salt/salt/pillar
         file_recv: True
         ext_pillar:
-          - cmd_yaml: /usr/bin/python3 /srv/actions-runner/_work/salt/salt/salt/salt/k3s_token_pillar.py
           - file_tree:
               root_dir: /etc/salt/tailscale/pillar
               follow_dir_links: False
@@ -56,6 +53,7 @@ salt-master-tailscale-credentials:
     - require:
       - file: salt-master-tailscale-directory
       - file: salt-master-tailscale-provisioner
+      - file: salt-master-config
 
 salt-master-tailscale-refresh-service:
   file.managed:

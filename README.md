@@ -76,10 +76,17 @@ VXLAN and kubelet traffic stay inside Tailscale. No public overlay ports,
 basement router forwards, or AWS security-group changes are required.
 Tailscale can use DERP when direct UDP connectivity is unavailable.
 
-The server publishes its token using Salt `cp.push`; the external pillar
+The server publishes its token using Salt `cp.push`; the provisioner reads it
+after server apply and on each timer refresh, and the built-in external pillar
 continues exposing `K3S_TOKEN` to all authenticated minions, as before.
 Treat all minions as trusted with this cluster credential. No credentials
 are committed to this repository.
+
+The management API file and key caches remain root-only. Published pillar
+files are owned by the configured Salt master service user with mode `0600`,
+in service-owned `0700` directories; the parent permits only that service
+group to traverse it. This supports a non-root master with a non-login shell
+without invoking shell-based pillar commands or exposing credentials publicly.
 
 ## Salt master
 
