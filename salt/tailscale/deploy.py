@@ -64,17 +64,28 @@ def deploy():
     subprocess.run(["python3", "/usr/local/sbin/salt-tailscale-provision"], check=True)
     salt(CLUSTER[1:], "saltutil.refresh_pillar", "wait=True")
     salt(CLUSTER[1:], "state.apply", "k3s.agent", "queue=True")
-    result = subprocess.run([
-        "salt", "--static", "--out=json", "--timeout=300", "k3s-control-plane-01",
-        "cmd.run_all",
+    check_cluster(
         "k3s kubectl wait --for=condition=Ready node/mlops-node-0 node/mlops-node-1 --timeout=180s",
+        "Both Kubernetes workers are Ready",
+    )
+    check_cluster(
+        "/usr/bin/python3 /usr/local/sbin/salt-k3s-verify",
+        "Tailscale addresses, cross-worker pod traffic, DNS, and kubelet metrics verified",
+    )
+
+
+def check_cluster(command, description):
+    result = subprocess.run([
+        "salt", "--static", "--out=json", "--timeout=600", "k3s-control-plane-01",
+        "cmd.run_all", command,
     ], capture_output=True, text=True)
     if result.returncode:
-        raise RuntimeError("Kubernetes Ready verification failed:\n" + result.stdout + result.stderr)
+        raise RuntimeError(description + " failed:\n" + result.stdout + result.stderr)
     response = json.loads(result.stdout).get("k3s-control-plane-01")
     if not isinstance(response, dict) or response.get("retcode") != 0:
-        raise RuntimeError("Kubernetes Ready verification failed:\n" + result.stdout + result.stderr)
-    print("Both Kubernetes workers are Ready", flush=True)
+        raise RuntimeError(description + " failed:\n" + result.stdout + result.stderr)
+    print(response.get("stdout", ""), flush=True)
+    print(description, flush=True)
 
 
 if __name__ == "__main__":

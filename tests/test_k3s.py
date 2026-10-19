@@ -27,6 +27,7 @@ def load(name, path):
 PROVISION = load("provision", "salt/tailscale/provision.py")
 NODE = load("node", "salt/tailscale/node.py")
 DEPLOY = load("deploy", "salt/tailscale/deploy.py")
+VERIFY = load("verify", "salt/k3s/verify.py")
 
 
 def render(state, node, pillar=None):
@@ -146,6 +147,17 @@ class PolicyTests(unittest.TestCase):
 
 
 class StateTests(unittest.TestCase):
+    def test_network_probes_are_pinned_to_each_worker_without_service_tokens(self):
+        for index, node in enumerate(VERIFY.WORKERS):
+            probe = VERIFY.probe("test-network-namespace", index)
+            self.assertEqual(probe["metadata"]["namespace"], "test-network-namespace")
+            self.assertEqual(probe["spec"]["nodeName"], node)
+            self.assertFalse(probe["spec"]["automountServiceAccountToken"])
+            self.assertTrue(probe["spec"]["containers"][0]["securityContext"]["runAsNonRoot"])
+            self.assertEqual(
+                probe["spec"]["containers"][0]["readinessProbe"]["httpGet"]["port"], 8080
+            )
+
     def test_targeting_and_fail_closed_guards(self):
         top = yaml.safe_load((ROOT / "salt/top.sls").read_text())["base"]
         self.assertIn("tailscale", top["*"])

@@ -83,6 +83,12 @@ k3s-kubectl:
     - require:
       - cmd: k3s-install
 
+k3s-network-verifier:
+  file.managed:
+    - name: /usr/local/sbin/salt-k3s-verify
+    - source: salt://k3s/verify.py
+    - mode: '0700'
+
 k3s-publish-token:
   cmd.run:
     - name: salt-call cp.push /var/lib/rancher/k3s/server/node-token upload_path=k3s-control-plane-01/k3s-token

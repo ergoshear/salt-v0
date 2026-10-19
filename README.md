@@ -15,7 +15,11 @@ commands. The apply workflow writes the API key to
 bootstraps `salt.master`, and then **targets remote minions**: Tailscale on
 all accepted minions, followed by the Kubernetes server and two workers.
 Offline minions or failed states fail deployment rather than claiming success.
-The final gate waits for both Kubernetes workers to become Ready.
+The final gates wait for both Kubernetes workers to become Ready, verify
+their Tailscale InternalIPs, test pod HTTP traffic in both directions and pod
+DNS using disposable BusyBox pods, and verify both workers' kubelet metrics.
+Probe pods run unprivileged without service-account tokens in a unique
+temporary namespace, which is deleted even if a check fails.
 
 ## Tailscale
 

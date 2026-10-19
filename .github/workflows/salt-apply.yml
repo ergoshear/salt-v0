@@ -27,8 +27,8 @@ jobs:
           TS_API_KEY: ${{ secrets.TS_API_KEY }}
         run: |
           test -n "$TS_API_KEY"
-          sudo -n install -d -m 0700 /etc/salt/tailscale
-          printf '%s' "$TS_API_KEY" | sudo -n sh -c 'umask 077; cat > /etc/salt/tailscale/api-key'
+          sudo -n test -d /etc/salt/tailscale || sudo -n install -d -m 0700 /etc/salt/tailscale
+          printf '%s' "$TS_API_KEY" | sudo -n sh -c 'umask 077; cat > /etc/salt/tailscale/api-key.new && mv /etc/salt/tailscale/api-key.new /etc/salt/tailscale/api-key'
 
       - name: Bootstrap Salt master and enrollment credentials
         run: |
