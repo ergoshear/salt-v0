@@ -182,7 +182,7 @@ class StateTests(unittest.TestCase):
         self.assertEqual(managed["mode"], "0600")
         command = options(state, "tailscale-enroll", "cmd.run")
         self.assertNotIn("secret-auth", command["name"])
-        self.assertFalse(command["python_shell"])
+        self.assertEqual(command["shell"], "/bin/sh")
 
     def test_firewalls_use_tailscale_and_no_public_overlay_ports(self):
         for node in CLUSTER:
@@ -218,6 +218,19 @@ class StateTests(unittest.TestCase):
 
 
 class EnrollmentTests(unittest.TestCase):
+    @patch.object(NODE.subprocess, "run")
+    @patch.object(NODE, "run")
+    def test_firewall_uses_actual_interface_zone_and_checks_both_scopes(self, run, execute):
+        run.return_value = json.dumps([{"dev": "ens5", "metric": 100}])
+        execute.return_value.returncode = 0
+        execute.return_value.stdout = "FedoraServer\n"
+        self.assertFalse(NODE.firewall("k3s-control-plane-01"))
+        calls = [call.args[0] for call in execute.call_args_list]
+        self.assertIn("--get-zone-of-interface=ens5", calls[0])
+        self.assertEqual(len(calls[1:]), 6)
+        self.assertTrue(all("--zone=FedoraServer" in command for command in calls[1:]))
+        self.assertEqual(sum("--permanent" in command for command in calls[1:]), 3)
+
     @patch.object(NODE, "status")
     def test_network_config_uses_real_tailnet_ip_and_is_idempotent(self, status):
         status.return_value = {

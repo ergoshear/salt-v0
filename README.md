@@ -70,8 +70,9 @@ The control plane retains its `NoSchedule` taint.
 Salt enables firewalld on the three Kubernetes nodes, trusts `tailscale0`
 and the default pod/service CIDRs (`10.42.0.0/16`, `10.43.0.0/16`), and enables
 IPv4 forwarding. It preserves existing rules and services. The server's
-public zone permits web ingress on TCP 80/443 and API access from the existing
-home CIDR `173.72.146.35/32`; its internet interface must use that zone.
+internet interface's actual zone permits web ingress on TCP 80/443 and API
+access from the existing home CIDR `173.72.146.35/32`, without moving the
+interface out of its existing zone.
 VXLAN and kubelet traffic stay inside Tailscale. No public overlay ports,
 basement router forwards, or AWS security-group changes are required.
 Tailscale can use DERP when direct UDP connectivity is unavailable.

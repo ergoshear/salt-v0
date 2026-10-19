@@ -26,16 +26,13 @@ k3s-firewall-cluster:
 
 {% if grains['id'] == 'k3s-control-plane-01' %}
 k3s-firewall-public:
-  firewalld.present:
-    - name: public
-    - ports:
-      - 80/tcp
-      - 443/tcp
-    - rich_rules:
-      - 'rule family="ipv4" source address="173.72.146.35/32" port port="6443" protocol="tcp" accept'
-    - prune_services: False
+  cmd.run:
+    - name: /usr/bin/python3 /usr/local/sbin/salt-tailscale-node firewall k3s-control-plane-01
+    - stateful: True
+    - shell: /bin/sh
     - require:
       - service: k3s-firewalld
+      - cmd: tailscale-enroll
 {% endif %}
 
 k3s-ip-forward:
@@ -47,8 +44,11 @@ k3s-tailscale-config:
   cmd.run:
     - name: /usr/bin/python3 /usr/local/sbin/salt-tailscale-node configure {{ grains['id'] | tojson }}
     - stateful: True
-    - python_shell: False
+    - shell: /bin/sh
     - require:
       - cmd: tailscale-enroll
       - firewalld: k3s-firewall-cluster
       - sysctl: k3s-ip-forward
+{% if grains['id'] == 'k3s-control-plane-01' %}
+      - cmd: k3s-firewall-public
+{% endif %}

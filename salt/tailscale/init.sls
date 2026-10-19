@@ -44,7 +44,7 @@ tailscale-enroll:
   cmd.run:
     - name: /usr/bin/python3 /usr/local/sbin/salt-tailscale-node enroll {{ node | tojson }}
     - stateful: True
-    - python_shell: False
+    - shell: /bin/sh
     - require:
       - service: tailscale-service
       - file: tailscale-auth-key
