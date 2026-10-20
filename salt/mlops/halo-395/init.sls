@@ -194,10 +194,9 @@ halo395_download_qwen38_flash_next:
     - name: >
         HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3.8-Flash-Next-GGUF
         --include "*UD-IQ4_XS*"
-        --local-dir {{ flash_dir }} &&
-        ln -sf $(ls {{ flash_dir }}/UD-IQ4_XS/*.gguf | sort | head -n 1) {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+        --local-dir {{ flash_dir }}
     - runas: {{ user }}
-    - creates: {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+    - creates: {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
     - timeout: 7200
     - require:
       - cmd: halo395_install_hf_cli
@@ -282,7 +281,7 @@ halo395_models_preset_ini:
         top-k = 20
 
         [Qwen3.8-Flash-Next-Low]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
@@ -306,7 +305,7 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-Medium]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
@@ -330,7 +329,7 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-NoThink]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
