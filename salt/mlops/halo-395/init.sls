@@ -214,7 +214,7 @@ halo395_build_llama_pr24423_diffusion:
           dnf reinstall -y binutils
           dnf install -y lld mold git cmake gcc gcc-c++ ninja-build \
             vulkan-headers vulkan-loader-devel glslc libcurl-devel \
-            python3-pip python3-sentencepiece python3-protobuf
+            python3 python3-pip python3-sentencepiece python3-protobuf
           if [ ! -e /usr/bin/ld ]; then
             ln -sf /usr/bin/ld.bfd /usr/bin/ld || ln -sf /usr/bin/ld.lld /usr/bin/ld
           fi
@@ -240,41 +240,53 @@ halo395_build_llama_pr24423_diffusion:
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         podman start llama-vulkan-radv >/dev/null 2>&1
-        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-diffusion
+        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-diffusion && \
+        podman exec llama-vulkan-radv test -f /opt/llama-pr24423/convert_hf_to_gguf.py
     - timeout: 1800
     - require:
       - cmd: halo395_create_vulkan_toolbox
 
 # ==============================================================================
-# 9. Download (or Convert + Quantize) DiffusionGemma-26B-A4B-it GGUF
+# 9. Download & Convert google/diffusiongemma-26b-A4B-it to Q4_K_M GGUF
 # ==============================================================================
 halo395_download_diffusiongemma_26b_a4b:
   cmd.run:
     - name: |
         mkdir -p {{ dgemma_dir }}
-        # 1. Try pre-quantized GGUF repo first
-        if HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/diffusiongemma-26b-A4B-it-GGUF \
-             --include "*UD-Q4_K_XL*" --local-dir {{ dgemma_dir }} && \
-           ls {{ dgemma_dir }}/*UD-Q4_K_XL*.gguf >/dev/null 2>&1; then
-          cp -lf $(ls {{ dgemma_dir }}/*UD-Q4_K_XL*.gguf | head -n 1) {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf || true
-        else
-          # 2. Fallback: Download google/diffusiongemma-26b-A4B-it & convert with PR #24423 converter
-          HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download google/diffusiongemma-26b-A4B-it \
-            --local-dir {{ dgemma_dir }}/hf-source
-          export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
-          podman start llama-vulkan-radv
-          podman exec llama-vulkan-radv bash -e -c '
-            pip3 install --user -q torch numpy safetensors sentencepiece protobuf transformers gguf
-            python3 /opt/llama-pr24423/convert_hf_to_gguf.py \
-              {{ dgemma_dir }}/hf-source \
-              --outfile {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
-              --outtype f16
-            /usr/local/bin/llama-quantize \
-              {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
-              {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf Q4_K_M
-            rm -f {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf
-          '
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download google/diffusiongemma-26b-A4B-it \
+          --local-dir {{ dgemma_dir }}/hf-source
+
+        # Create a clean host Python venv for GGUF conversion (uses host python3-pip)
+        if [ ! -x {{ home }}/.venv-gguf/bin/python ]; then
+          python3 -m venv {{ home }}/.venv-gguf
         fi
+        {{ home }}/.venv-gguf/bin/pip install -q --upgrade pip
+        {{ home }}/.venv-gguf/bin/pip install -q \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          torch numpy safetensors sentencepiece protobuf transformers
+
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        podman start llama-vulkan-radv
+
+        # Copy PR #24423 converter + gguf-py from container into host model dir
+        podman cp llama-vulkan-radv:/opt/llama-pr24423/convert_hf_to_gguf.py {{ dgemma_dir }}/convert_hf_to_gguf.py
+        podman cp llama-vulkan-radv:/opt/llama-pr24423/gguf-py {{ dgemma_dir }}/gguf-py
+        {{ home }}/.venv-gguf/bin/pip install -q -e {{ dgemma_dir }}/gguf-py
+
+        # 1. Convert HF safetensors -> F16 GGUF using PR #24423's exact gguf-py & converter
+        if [ ! -s {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf ]; then
+          {{ home }}/.venv-gguf/bin/python {{ dgemma_dir }}/convert_hf_to_gguf.py \
+            {{ dgemma_dir }}/hf-source \
+            --outfile {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
+            --outtype f16
+        fi
+
+        # 2. Quantize F16 -> Q4_K_M using PR #24423's llama-quantize
+        podman exec llama-vulkan-radv /usr/local/bin/llama-quantize \
+          {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
+          {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf Q4_K_M
+
+        rm -f {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf
     - runas: {{ user }}
     - creates: {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf
     - timeout: 7200
