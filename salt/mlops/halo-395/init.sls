@@ -292,9 +292,7 @@ halo395_rebuild_llama_for_host_cpu:
       - cmd: halo395_create_vulkan_toolbox
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini (2 Consolidated Resident Slots = 0s Swap!)
-#     Slot 1: Qwen3-Coder-30B-A3B (128K context)
-#     Slot 2: Qwen3.8-Flash-Next (128K context + draft-mtp)
+# 10. Manage ~/models/models.ini (Right-Sized for 128GB GTT --models-max 2)
 # ==============================================================================
 halo395_models_preset_ini:
   file.managed:
@@ -314,9 +312,9 @@ halo395_models_preset_ini:
         parallel = 1
         cache-type-k = q8_0
         cache-type-v = q8_0
-        ctx-size = 131072
-        ubatch-size = 1024
-        batch-size = 4096
+        ctx-size = 65536
+        ubatch-size = 512
+        batch-size = 2048
         threads = 8
         temp = 0.7
         top-p = 0.80
@@ -336,10 +334,10 @@ halo395_models_preset_ini:
         parallel = 1
         spec-type = draft-mtp
         cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 131072
-        ubatch-size = 1024
-        batch-size = 4096
+        cache-type-v = q4_0
+        ctx-size = 65536
+        ubatch-size = 512
+        batch-size = 2048
         threads = 8
         temp = 1.0
         top-p = 0.95
