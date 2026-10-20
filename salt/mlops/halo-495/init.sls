@@ -1,5 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
+include:
+  - mlops.huggingface
 {% set qwen36_dir = home ~ '/models/Qwen3.6-35B-A3B-MTP-GGUF' %}
 {% set qwen38_dir = home ~ '/models/Qwen3.8-27B-GGUF' %}
 

@@ -8,7 +8,13 @@ on a GitHub-hosted runner, then a local `salt.master` dry run on the
 run and apply so the master's configured file roots receive the main checkout.
 Only after success does it call the
 [apply workflow](.github/workflows/salt-apply.yml), explicitly forwarding
-the required `TS_API_KEY` GitHub Actions secret. A manual apply skips the
+the required `TS_API_KEY`, `LITELLM_BACKEND_KEY`, and
+`HUGGING_FACE_ACCESS_KEY` GitHub Actions secrets. The apply writes model
+credentials as private, master-owned file-tree pillars for only
+`mlops-node-4`, `mlops-node-6`, `mlops-node-7`, and `mlops-node-9`, checks that
+the compiled pillars are scoped to those hosts, and applies the backend and
+Hugging Face states on those minions. The secrets are never committed or
+printed. A manual apply skips the
 dry-run gate. The push workflow serializes runs against the shared checkout.
 
 The runner needs Salt, Python 3, and passwordless sudo for the workflow
@@ -154,9 +160,15 @@ mlops node must use a matching `.lan` hostname to receive the export.
 
 ## Security deployment ordering
 
-Inference states now include `mlops.backend`. Seed a strong, single-line
-`INFERENCE_BACKEND_KEY` only for nodes 4, 6, 7 and 9 (or securely preseed
-`/home/mlops/.config/llama/backend-key`, owned by `mlops`, mode 0600).
+Inference states now include `mlops.backend`. The apply workflow seeds the
+single-line `LITELLM_BACKEND_KEY` GitHub Actions secret as the
+`INFERENCE_BACKEND_KEY` pillar and the `HUGGING_FACE_ACCESS_KEY` secret as the
+`HUGGING_FACE_ACCESS_KEY` pillar only for nodes 4, 6, 7 and 9. The
+`mlops.huggingface` state installs the Hugging Face CLI token at
+`/home/mlops/.cache/huggingface/token` with mode 0600 on all model downloaders.
+For manual host
+recovery, the key can also be securely preseeded at
+`/home/mlops/.config/llama/backend-key`, owned by `mlops`, mode 0600.
 Use the same value in the `inference-backend` Kubernetes Secret in the
 `litellm` and `hermes-workspace` namespaces. No key belongs in Git, CLI
 arguments, state output or a global pillar. Stage client credentials first.

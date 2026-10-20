@@ -5,6 +5,10 @@ on:
     secrets:
       TS_API_KEY:
         required: true
+      LITELLM_BACKEND_KEY:
+        required: true
+      HUGGING_FACE_ACCESS_KEY:
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -30,6 +34,48 @@ jobs:
           sudo -n test -d /etc/salt/tailscale || sudo -n install -d -m 0700 /etc/salt/tailscale
           printf '%s' "$TS_API_KEY" | sudo -n sh -c 'umask 077; cat > /etc/salt/tailscale/api-key.new && mv /etc/salt/tailscale/api-key.new /etc/salt/tailscale/api-key'
 
+      - name: Seed inference backend pillar for GPU minions
+        env:
+          LITELLM_BACKEND_KEY: ${{ secrets.LITELLM_BACKEND_KEY }}
+          HUGGING_FACE_ACCESS_KEY: ${{ secrets.HUGGING_FACE_ACCESS_KEY }}
+        run: |
+          test -n "$LITELLM_BACKEND_KEY"
+          test -n "$HUGGING_FACE_ACCESS_KEY"
+          printf '%s\n%s\n' "$LITELLM_BACKEND_KEY" "$HUGGING_FACE_ACCESS_KEY" | sudo -n python3 -c '
+          import json
+          import os
+          import pwd
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          key, hf_key = sys.stdin.read().splitlines()
+          for name, value in (("LITELLM_BACKEND_KEY", key), ("HUGGING_FACE_ACCESS_KEY", hf_key)):
+              if not value or any(c in value for c in "\r\n"):
+                  raise ValueError(f"{name} must be a nonempty single-line value")
+          service_user = subprocess.check_output(
+              ["systemctl", "show", "salt-master", "--property=User", "--value"],
+              text=True,
+          ).strip() or "root"
+          account = pwd.getpwnam(service_user)
+          root = Path("/etc/salt/tailscale/pillar/hosts")
+          root.mkdir(parents=True, exist_ok=True, mode=0o700)
+          os.chown(root, account.pw_uid, account.pw_gid)
+          root.chmod(0o700)
+          for node in ("mlops-node-4", "mlops-node-6", "mlops-node-7", "mlops-node-9"):
+              directory = root / node
+              directory.mkdir(exist_ok=True, mode=0o700)
+              os.chown(directory, account.pw_uid, account.pw_gid)
+              directory.chmod(0o700)
+              for name, value in (("INFERENCE_BACKEND_KEY", key), ("HUGGING_FACE_ACCESS_KEY", hf_key)):
+                  target = directory / name
+                  temporary = directory / f".{name}.new"
+                  temporary.write_text(json.dumps(value) + "\n")
+                  os.chown(temporary, account.pw_uid, account.pw_gid)
+                  temporary.chmod(0o600)
+                  temporary.replace(target)
+          '
+
       - name: Bootstrap Salt master and enrollment credentials
         run: |
           sudo -n salt-call --local \
@@ -41,6 +87,21 @@ jobs:
           sudo -n salt-run --out=json salt.cmd config.get ext_pillar
           sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
             python3 -c 'import json, sys; data = json.load(sys.stdin); assert isinstance(data, dict), "Pillar compilation failed"; print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
+
+      - name: Verify model credentials are scoped to GPU minions
+        run: |
+          for node in mlops-node-4 mlops-node-6 mlops-node-7 mlops-node-9; do
+            sudo -n salt-run --out=json pillar.show_pillar minion="$node" |
+              python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("INFERENCE_BACKEND_KEY") and d.get("HUGGING_FACE_ACCESS_KEY"), "Model credential pillar missing"; print("Model credential pillars present for authorized GPU minion")'
+          done
+          sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert "INFERENCE_BACKEND_KEY" not in d and "HUGGING_FACE_ACCESS_KEY" not in d, "Model credential pillar leaked to unauthorized minion"; print("Model credential pillars absent from non-GPU minion")'
+
+      - name: Apply inference backend state to GPU minions
+        run: sudo -n salt 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend --retcode-passthrough
+
+      - name: Install Hugging Face credentials on model downloaders
+        run: sudo -n salt 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface --retcode-passthrough
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"

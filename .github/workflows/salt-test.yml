@@ -53,3 +53,5 @@ jobs:
     uses: ./.github/workflows/salt-apply.yml
     secrets:
       TS_API_KEY: ${{ secrets.TS_API_KEY }}
+      LITELLM_BACKEND_KEY: ${{ secrets.LITELLM_BACKEND_KEY }}
+      HUGGING_FACE_ACCESS_KEY: ${{ secrets.HUGGING_FACE_ACCESS_KEY }}

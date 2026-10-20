@@ -2,6 +2,7 @@
 {% set home = '/home/' ~ user %}
 include:
   - mlops.backend
+  - mlops.huggingface
 {% set glimmer_dir = home ~ '/models/Muse-Glimmer-30B-GGUF' %}
 
 # ==============================================================================
