@@ -53,15 +53,17 @@ jobs:
           for name, value in (("LITELLM_BACKEND_KEY", key), ("HUGGING_FACE_ACCESS_KEY", hf_key)):
               if not value or any(c in value for c in "\r\n"):
                   raise ValueError(f"{name} must be a nonempty single-line value")
-          service_user = subprocess.check_output(
-              ["systemctl", "show", "salt-master", "--property=User", "--value"],
+          service_user = json.loads(subprocess.check_output(
+              ["salt-run", "--out=json", "salt.cmd", "config.get", "user"],
               text=True,
-          ).strip() or "root"
+          ))
           account = pwd.getpwnam(service_user)
-          root = Path("/etc/salt/tailscale/pillar/hosts")
-          root.mkdir(parents=True, exist_ok=True, mode=0o700)
-          os.chown(root, account.pw_uid, account.pw_gid)
-          root.chmod(0o700)
+          pillar = Path("/etc/salt/tailscale/pillar")
+          root = pillar / "hosts"
+          for directory in (pillar, root):
+              directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+              os.chown(directory, account.pw_uid, account.pw_gid)
+              directory.chmod(0o700)
           for node in ("mlops-node-4", "mlops-node-6", "mlops-node-7", "mlops-node-9"):
               directory = root / node
               directory.mkdir(exist_ok=True, mode=0o700)
