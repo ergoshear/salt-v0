@@ -1,7 +1,5 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
-include:
-  - mlops.backend
 {% set coder_dir = home ~ '/models/Qwen3-Coder-30B-A3B-GGUF' %}
 {% set flash_dir = home ~ '/models/Qwen3.8-Flash-Next-GGUF' %}
 
@@ -140,7 +138,7 @@ halo395_apply_amdgpu_dpm_now:
     - onlyif: ls /sys/class/drm/card*/device/power_dpm_force_performance_level
 
 # ==============================================================================
-# 6. Remove the legacy blanket inference port; mlops.backend owns access.
+# 6. Open Port 8080/tcp in Firewalld for LAN & LiteLLM Gateway Access
 # ==============================================================================
 halo395_firewalld_service:
   service.running:
@@ -151,8 +149,8 @@ halo395_firewalld_service:
 
 halo395_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
-    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
+    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
+    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
     - require:
       - service: halo395_firewalld_service
 
@@ -227,7 +225,7 @@ halo395_download_sharp_template:
       - cmd: halo395_install_hf_cli
 
 # ==============================================================================
-# 9. Enable Linger & Create the Strix Halo Vulkan RADV Toolbx Container
+# 9. Enable Linger, Create Vulkan RADV Toolbx & Compile llama.cpp for Zen 5
 # ==============================================================================
 halo395_enable_linger:
   cmd.run:
@@ -253,8 +251,47 @@ halo395_create_vulkan_toolbox:
       - file: halo395_memlock_limits
       - cmd: halo395_podman_migrate
 
+halo395_rebuild_llama_for_host_cpu:
+  cmd.run:
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        systemctl --user stop strix-llama-router.service || true
+        podman start llama-vulkan-radv
+        podman exec --user 0 llama-vulkan-radv bash -e -c '
+          dnf reinstall -y binutils
+          dnf install -y lld mold git cmake gcc gcc-c++ ninja-build vulkan-headers vulkan-loader-devel glslc libcurl-devel
+          if [ ! -e /usr/bin/ld ]; then
+            ln -sf /usr/bin/ld.bfd /usr/bin/ld || ln -sf /usr/bin/ld.lld /usr/bin/ld
+          fi
+          rm -rf /tmp/llama.cpp
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
+          cmake -B /tmp/llama.cpp/build -S /tmp/llama.cpp -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_VULKAN=ON \
+            -DGGML_NATIVE=ON
+          cmake --build /tmp/llama.cpp/build --config Release -j $(nproc) --target llama-server llama-cli
+          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/local/bin/
+          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/bin/ 2>/dev/null || true
+          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
+          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
+          ldconfig
+          touch /etc/llama-built-native-host-cpu
+          rm -rf /tmp/llama.cpp
+        '
+    - runas: {{ user }}
+    - unless: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+        podman start llama-vulkan-radv >/dev/null 2>&1
+        podman exec llama-vulkan-radv test -f /etc/llama-built-native-host-cpu
+    - timeout: 1200
+    - require:
+      - cmd: halo395_create_vulkan_toolbox
+
 # ==============================================================================
-# 10. Manage ~/models/models.ini for llama-server Router Mode (128K + draft-mtp)
+# 10. Manage ~/models/models.ini (2 Consolidated Resident Slots = 0s Swap!)
+#     Slot 1: Qwen3-Coder-30B-A3B (128K context)
+#     Slot 2: Qwen3.8-Flash-Next (128K context + draft-mtp)
 # ==============================================================================
 halo395_models_preset_ini:
   file.managed:
@@ -282,7 +319,7 @@ halo395_models_preset_ini:
         top-p = 0.80
         top-k = 20
 
-        [Qwen3.8-Flash-Next-Low]
+        [Qwen3.8-Flash-Next]
         model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
@@ -292,7 +329,6 @@ halo395_models_preset_ini:
         flash-attn = 1
         jinja = true
         chat-template-file = {{ flash_dir }}/chat_template.jinja
-        chat-template-kwargs = {"reasoning_effort":"low"}
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-mtp
@@ -305,54 +341,6 @@ halo395_models_preset_ini:
         temp = 1.0
         top-p = 0.95
         top-k = 40
-
-        [Qwen3.8-Flash-Next-Medium]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ flash_dir }}/chat_template.jinja
-        chat-template-kwargs = {"reasoning_effort":"medium"}
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-mtp
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 131072
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 1.0
-        top-p = 0.95
-        top-k = 40
-
-        [Qwen3.8-Flash-Next-NoThink]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ flash_dir }}/chat_template.jinja
-        reasoning = off
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-mtp
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 131072
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 0.7
-        top-p = 0.80
-        top-k = 20
     - require:
       - cmd: halo395_download_qwen3_coder_30b
       - cmd: halo395_download_qwen38_flash_next
@@ -380,7 +368,7 @@ halo395_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Strix Halo 128GB llama-server Router (--models-max 2 Resident Mode)
+        Description=Strix Halo 128GB llama-server Router (--models-max 2 Zero-Swap Resident Mode)
         After=network-online.target
         Wants=network-online.target
 
@@ -399,15 +387,14 @@ halo395_router_systemd_unit:
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
-          --port 8080 \
-          --api-key-file {{ home }}/.config/llama/backend-key
+          --port 8080
 
-        # Pre-warm both primary models into 128GB LPDDR5X in the background on startup
+        # Pre-warm both resident models into 128GB LPDDR5X on startup (stop on <think> so it finishes in <1s)
         ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
-          for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next-Medium"; do \
-            curl -s --header @{{ home }}/.config/llama/auth-header http://127.0.0.1:8080/v1/chat/completions \
+          for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next"; do \
+            curl -s http://127.0.0.1:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
-              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"chat_template_kwargs\":{\"enable_thinking\":false,\"reasoning_effort\":\"none\"}}" >/dev/null 2>&1 \
+              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"stop\":[\"<think>\",\"\\n\"]}" >/dev/null 2>&1 \
           done &'
 
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
@@ -420,8 +407,6 @@ halo395_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: halo395_systemd_user_dir
-      - cmd: inference-backend-header
-      - cmd: inference-firewall-apply
 
 halo395_enable_and_start_router_service:
   cmd.run:
@@ -437,6 +422,7 @@ halo395_enable_and_start_router_service:
     - require:
       - cmd: halo395_enable_linger
       - cmd: halo395_create_vulkan_toolbox
+      - cmd: halo395_rebuild_llama_for_host_cpu
       - file: halo395_models_preset_ini
       - file: halo395_router_systemd_unit
 
@@ -449,6 +435,7 @@ halo395_restart_router_on_config_change:
         systemctl --user restart strix-llama-router.service
     - runas: {{ user }}
     - onchanges:
+      - cmd: halo395_rebuild_llama_for_host_cpu
       - file: halo395_router_systemd_unit
       - file: halo395_models_preset_ini
     - require:

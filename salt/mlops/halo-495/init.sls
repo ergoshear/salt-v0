@@ -1,9 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
-include:
-  - mlops.backend
+{% set qwen36_dir = home ~ '/models/Qwen3.6-35B-A3B-MTP-GGUF' %}
 {% set qwen38_dir = home ~ '/models/Qwen3.8-27B-GGUF' %}
-{% set glm53_dir = home ~ '/models/GLM-5.3-Flash-GGUF' %}
 
 # ==============================================================================
 # 1. Base Packages & System Dependencies (Fedora 44)
@@ -140,7 +138,7 @@ halo495_apply_amdgpu_dpm_now:
     - onlyif: ls /sys/class/drm/card*/device/power_dpm_force_performance_level
 
 # ==============================================================================
-# 6. Remove the legacy blanket inference port; mlops.backend owns access.
+# 6. Open Port 8080/tcp in Firewalld for LAN & LiteLLM Gateway Access
 # ==============================================================================
 halo495_firewalld_service:
   service.running:
@@ -151,8 +149,8 @@ halo495_firewalld_service:
 
 halo495_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
-    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
+    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
+    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
     - require:
       - service: halo495_firewalld_service
 
@@ -177,8 +175,43 @@ halo495_user_bashrc_path:
       - user: halo495_user_account
 
 # ==============================================================================
-# 8. Download Qwen3.8-27B (+ MTP/Draft + Sharp Template) & GLM-5.3-Flash
+# 8. Download Qwen3.6-35B-A3B (+ williamliao DFlash) & Qwen3.8-27B (+ MTP)
 # ==============================================================================
+halo495_download_qwen36_35b_a3b:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3.6-35B-A3B-MTP-GGUF
+        --include "*UD-Q4_K_XL*"
+        --local-dir {{ qwen36_dir }}
+    - runas: {{ user }}
+    - creates: {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+    - timeout: 3600
+    - require:
+      - cmd: halo495_install_hf_cli
+
+halo495_download_qwen36_35b_dflash_drafter:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download williamliao/Qwen3.6-35B-A3B-DFlash-GGUF
+        Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
+        --local-dir {{ qwen36_dir }}
+    - runas: {{ user }}
+    - creates: {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
+    - timeout: 1800
+    - require:
+      - cmd: halo495_install_hf_cli
+
+halo495_download_qwen36_sharp_template:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download peculiar-ragdoll/Qwen-Sharp-Chat-Templates
+        chat_template.jinja
+        --local-dir {{ qwen36_dir }}
+    - runas: {{ user }}
+    - creates: {{ qwen36_dir }}/chat_template.jinja
+    - require:
+      - cmd: halo495_install_hf_cli
+
 halo495_download_qwen38_27b:
   cmd.run:
     - name: >
@@ -186,12 +219,24 @@ halo495_download_qwen38_27b:
         --include "*UD-Q4_K_XL*"
         --local-dir {{ qwen38_dir }}
     - runas: {{ user }}
-    - unless: ls {{ qwen38_dir }}/*.gguf >/dev/null 2>&1
+    - creates: {{ qwen38_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
     - timeout: 3600
     - require:
       - cmd: halo495_install_hf_cli
 
-halo495_download_sharp_template:
+halo495_download_qwen38_27b_mtp:
+  cmd.run:
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ggml-org/Qwen3.8-27B-GGUF
+        mtp-Qwen3.8-27B-Q8_0.gguf
+        --local-dir {{ qwen38_dir }}
+    - runas: {{ user }}
+    - creates: {{ qwen38_dir }}/mtp-Qwen3.8-27B-Q8_0.gguf
+    - timeout: 1800
+    - require:
+      - cmd: halo495_install_hf_cli
+
+halo495_download_qwen38_sharp_template:
   cmd.run:
     - name: >
         HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download peculiar-ragdoll/Qwen-Sharp-Chat-Templates
@@ -199,18 +244,6 @@ halo495_download_sharp_template:
         --local-dir {{ qwen38_dir }}
     - runas: {{ user }}
     - creates: {{ qwen38_dir }}/chat_template.jinja
-    - require:
-      - cmd: halo495_install_hf_cli
-
-halo495_download_glm53_flash:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/GLM-5.3-Flash-GGUF
-        --include "*UD-IQ4_XS*"
-        --local-dir {{ glm53_dir }}
-    - runas: {{ user }}
-    - unless: ls {{ glm53_dir }}/*.gguf >/dev/null 2>&1
-    - timeout: 3600
     - require:
       - cmd: halo495_install_hf_cli
 
@@ -242,7 +275,9 @@ halo495_create_vulkan_toolbox:
       - cmd: halo495_podman_migrate
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini for llama-server Router Mode (256K Context)
+# 10. Manage ~/models/models.ini (2 Consolidated Resident Slots = 0s Swap!)
+#     Slot 1: Qwen3.6-35B-A3B-DFlash-512K (524,288 context window + DFlash)
+#     Slot 2: Qwen3.8-27B (262,144 context window + draft-mtp)
 # ==============================================================================
 halo495_models_preset_ini:
   file.managed:
@@ -251,86 +286,51 @@ halo495_models_preset_ini:
     - group: {{ user }}
     - mode: '0644'
     - makedirs: True
-    - replace: False
     - contents: |
-        [Qwen3.8-27B-Low]
-        model = {{ qwen38_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
+        [Qwen3.6-35B-A3B-DFlash-512K]
+        model = {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
-        chat-template-file = {{ qwen38_dir }}/chat_template.jinja
-        chat-template-kwargs = {"reasoning_effort":"low"}
+        chat-template-file = {{ qwen36_dir }}/chat_template.jinja
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-dflash
+        spec-draft-n-max = 7
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
-        ctx-size = 262144
+        ctx-size = 524288
+        rope-scaling = yarn
+        rope-scale = 2.0
+        yarn-orig-ctx = 262144
         ubatch-size = 1024
         batch-size = 4096
         threads = 8
-        temp = 1.0
+        temp = 0.6
         top-p = 0.95
-        top-k = 40
-
-        [Qwen3.8-27B-Medium]
-        model = {{ qwen38_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
-        fit = off
-        n-gpu-layers = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ qwen38_dir }}/chat_template.jinja
-        chat-template-kwargs = {"reasoning_effort":"medium"}
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = mtp
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 262144
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 1.0
-        top-p = 0.95
-        top-k = 40
-
-        [Qwen3.8-27B-NoThink]
-        model = {{ qwen38_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
-        fit = off
-        n-gpu-layers = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ qwen38_dir }}/chat_template.jinja
-        reasoning = off
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = mtp
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 262144
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 0.7
-        top-p = 0.80
         top-k = 20
 
-        [GLM-5.3-Flash]
-        model = {{ glm53_dir }}/GLM-5.3-Flash-UD-IQ4_XS.gguf
+        [Qwen3.8-27B]
+        model = {{ qwen38_dir }}/Qwen3.8-27B-UD-Q4_K_XL.gguf
+        model-draft = {{ qwen38_dir }}/mtp-Qwen3.8-27B-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
+        chat-template-file = {{ qwen38_dir }}/chat_template.jinja
         no-reasoning-preserve = true
         parallel = 1
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q8_0
-        ctx-size = 131072
+        ctx-size = 262144
         ubatch-size = 1024
         batch-size = 4096
         threads = 8
@@ -338,12 +338,15 @@ halo495_models_preset_ini:
         top-p = 0.95
         top-k = 40
     - require:
+      - cmd: halo495_download_qwen36_35b_a3b
+      - cmd: halo495_download_qwen36_35b_dflash_drafter
+      - cmd: halo495_download_qwen36_sharp_template
       - cmd: halo495_download_qwen38_27b
-      - cmd: halo495_download_sharp_template
-      - cmd: halo495_download_glm53_flash
+      - cmd: halo495_download_qwen38_27b_mtp
+      - cmd: halo495_download_qwen38_sharp_template
 
 # ==============================================================================
-# 11. Systemd User Service: strix-llama-router.service (--models-max 4 Resident)
+# 11. Systemd User Service: strix-llama-router.service (--models-max 2 Resident)
 # ==============================================================================
 halo495_systemd_user_dir:
   file.directory:
@@ -363,7 +366,7 @@ halo495_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Strix Halo 192GB llama-server Router (--models-max 4 Resident Mode)
+        Description=Strix Halo 192GB llama-server Router (--models-max 2 Zero-Swap Resident Mode)
         After=network-online.target
         Wants=network-online.target
 
@@ -378,19 +381,18 @@ halo495_router_systemd_unit:
         ExecStart=/usr/bin/toolbox run --container llama-vulkan-radv \
           llama-server \
           --models-preset {{ home }}/models/models.ini \
-          --models-max 4 \
+          --models-max 2 \
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
-          --port 8080 \
-          --api-key-file {{ home }}/.config/llama/backend-key
+          --port 8080
 
-        # Pre-warm all 4 presets into 192GB LPDDR5X in the background on startup
+        # Pre-warm both resident models into 192GB LPDDR5X on startup (stop on <think> so it finishes in <1s)
         ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
-          for m in "GLM-5.3-Flash" "Qwen3.8-27B-Low" "Qwen3.8-27B-Medium" "Qwen3.8-27B-NoThink"; do \
-            curl -s --header @{{ home }}/.config/llama/auth-header http://127.0.0.1:8080/v1/chat/completions \
+          for m in "Qwen3.6-35B-A3B-DFlash-512K" "Qwen3.8-27B"; do \
+            curl -s http://127.0.0.1:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
-              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"chat_template_kwargs\":{\"enable_thinking\":false,\"reasoning_effort\":\"none\"}}" >/dev/null 2>&1 \
+              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"stop\":[\"<think>\",\"\\n\"]}" >/dev/null 2>&1 \
           done &'
 
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
@@ -403,8 +405,6 @@ halo495_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: halo495_systemd_user_dir
-      - cmd: inference-backend-header
-      - cmd: inference-firewall-apply
 
 halo495_enable_and_start_router_service:
   cmd.run:
