@@ -84,11 +84,17 @@ jobs:
             --file-root=/srv/actions-runner/_work/salt/salt/salt \
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
             state.apply salt.master queue=True --retcode-passthrough
-          sudo -n systemctl restart salt-master
           sudo -n systemctl show salt-master --property=User --property=ActiveState
           sudo -n salt-run --out=json salt.cmd config.get ext_pillar
           sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
             python3 -c 'import json, sys; data = json.load(sys.stdin); assert isinstance(data, dict), "Pillar compilation failed"; print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
+
+      - name: Verify GPU minions are reachable
+        run: |
+          set -o pipefail
+          sudo -n salt --static --out=json --timeout=60 \
+            -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' test.ping |
+            python3 -c 'import json, sys; data = json.load(sys.stdin); expected = {"mlops-node-4", "mlops-node-6", "mlops-node-7", "mlops-node-9"}; assert set(data) == expected and all(value is True for value in data.values()), f"GPU minion ping failed: {data}"; print("All GPU minions responded to Salt")'
 
       - name: Verify model credentials are scoped to GPU minions
         run: |
@@ -100,10 +106,10 @@ jobs:
             python3 -c 'import json,sys; d=json.load(sys.stdin); assert "INFERENCE_BACKEND_KEY" not in d and "HUGGING_FACE_ACCESS_KEY" not in d, "Model credential pillar leaked to unauthorized minion"; print("Model credential pillars absent from non-GPU minion")'
 
       - name: Apply inference backend state to GPU minions
-        run: sudo -n salt 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend
+        run: sudo -n salt --timeout=300 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend
 
       - name: Install Hugging Face credentials on model downloaders
-        run: sudo -n salt 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface
+        run: sudo -n salt --timeout=300 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"
