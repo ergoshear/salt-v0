@@ -192,12 +192,25 @@ halo395_download_qwen3_coder_30b:
 halo395_download_qwen38_flash_next:
   cmd.run:
     - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3.8-Flash-Next-GGUF
+        --include "*UD-IQ4_XS*"
+        --local-dir {{ flash_dir }} &&
+        ln -sf $(ls {{ flash_dir }}/UD-IQ4_XS/*.gguf | sort | head -n 1) {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+    - runas: {{ user }}
+    - creates: {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
+    - timeout: 7200
+    - require:
+      - cmd: halo395_install_hf_cli
+
+halo395_download_qwen38_flash_next_mtp:
+  cmd.run:
+    - name: >
         HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ggml-org/Qwen3.8-Flash-Next-GGUF
-        --include "*Q4_K_M*"
+        mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         --local-dir {{ flash_dir }}
     - runas: {{ user }}
-    - unless: ls {{ flash_dir }}/*Q4_K_M*.gguf >/dev/null 2>&1
-    - timeout: 7200
+    - creates: {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
+    - timeout: 1800
     - require:
       - cmd: halo395_install_hf_cli
 
@@ -240,7 +253,7 @@ halo395_create_vulkan_toolbox:
       - cmd: halo395_podman_migrate
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini for llama-server Router Mode (128K Context)
+# 10. Manage ~/models/models.ini for llama-server Router Mode (128K + draft-mtp)
 # ==============================================================================
 halo395_models_preset_ini:
   file.managed:
@@ -249,7 +262,6 @@ halo395_models_preset_ini:
     - group: {{ user }}
     - mode: '0644'
     - makedirs: True
-    - replace: False
     - contents: |
         [Qwen3-Coder-30B-A3B]
         model = {{ coder_dir }}/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf
@@ -270,7 +282,7 @@ halo395_models_preset_ini:
         top-k = 20
 
         [Qwen3.8-Flash-Next-Low]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
@@ -294,7 +306,7 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-Medium]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
@@ -318,7 +330,7 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-NoThink]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model = {{ flash_dir }}/Qwen3.8-Flash-Next-UD-IQ4_XS-primary.gguf
         model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
@@ -340,6 +352,11 @@ halo395_models_preset_ini:
         temp = 0.7
         top-p = 0.80
         top-k = 20
+    - require:
+      - cmd: halo395_download_qwen3_coder_30b
+      - cmd: halo395_download_qwen38_flash_next
+      - cmd: halo395_download_qwen38_flash_next_mtp
+      - cmd: halo395_download_sharp_template
 
 # ==============================================================================
 # 11. Systemd User Service: strix-llama-router.service (--models-max 2 Resident)
