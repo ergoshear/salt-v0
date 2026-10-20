@@ -36,7 +36,7 @@ def render(state, node, pillar=None, filename="init.sls"):
         (ROOT / "salt" / state / filename).read_text()
     )
     return yaml.safe_load(template.render(
-        grains={"id": node},
+        grains={"id": node, "pythonversion": [3, 14, 0, "final", 0]},
         salt={"pillar.get": lambda key, default=None: pillar.get(key, default)},
     ))
 
