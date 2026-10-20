@@ -12,7 +12,12 @@ tuned-package:
 aws-tuned-profile:
   file.managed:
     - name: /etc/tuned/aws/tuned.conf
-    - source: salt://system/files/aws-tuned.conf  # (Keep your existing source/contents block here)
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        [main]
+        include=virtual-guest
     - makedirs: True
     - require:
       - pkg: tuned-package
