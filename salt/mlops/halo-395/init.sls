@@ -249,6 +249,7 @@ halo395_models_preset_ini:
     - group: {{ user }}
     - mode: '0644'
     - makedirs: True
+    - replace: False
     - contents: |
         [Qwen3-Coder-30B-A3B]
         model = {{ coder_dir }}/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf
@@ -269,8 +270,8 @@ halo395_models_preset_ini:
         top-k = 20
 
         [Qwen3.8-Flash-Next-Low]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-Q4_K_M.gguf
-        model-draft = {{ flash_dir }}/Qwen3.8-Flash-Next-MTP-Q8_0.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
         n-gpu-layers-draft = 999
@@ -281,7 +282,7 @@ halo395_models_preset_ini:
         chat-template-kwargs = {"reasoning_effort":"low"}
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 131072
@@ -293,8 +294,8 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-Medium]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-Q4_K_M.gguf
-        model-draft = {{ flash_dir }}/Qwen3.8-Flash-Next-MTP-Q8_0.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
         n-gpu-layers-draft = 999
@@ -305,7 +306,7 @@ halo395_models_preset_ini:
         chat-template-kwargs = {"reasoning_effort":"medium"}
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 131072
@@ -317,8 +318,8 @@ halo395_models_preset_ini:
         top-k = 40
 
         [Qwen3.8-Flash-Next-NoThink]
-        model = {{ flash_dir }}/Qwen3.8-Flash-Next-Q4_K_M.gguf
-        model-draft = {{ flash_dir }}/Qwen3.8-Flash-Next-MTP-Q8_0.gguf
+        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
         fit = off
         n-gpu-layers = 999
         n-gpu-layers-draft = 999
@@ -329,7 +330,7 @@ halo395_models_preset_ini:
         reasoning = off
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 131072
@@ -339,10 +340,6 @@ halo395_models_preset_ini:
         temp = 0.7
         top-p = 0.80
         top-k = 20
-    - require:
-      - cmd: halo395_download_qwen3_coder_30b
-      - cmd: halo395_download_qwen38_flash_next
-      - cmd: halo395_download_sharp_template
 
 # ==============================================================================
 # 11. Systemd User Service: strix-llama-router.service (--models-max 2 Resident)
