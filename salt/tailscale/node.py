@@ -20,23 +20,32 @@ def status():
 def enroll(node):
     tags = ["tag:salt-managed"] + (["tag:k8s"] if node in CLUSTER else [])
     current = status()
+    command = [
+        "tailscale", "up", "--auth-key=file:/etc/tailscale/salt-authkey",
+        "--hostname=" + node, "--advertise-tags=" + ",".join(tags),
+    ]
     if current["BackendState"] != "Running":
-        subprocess.run([
-            "tailscale", "up", "--auth-key=file:/etc/tailscale/salt-authkey",
-            "--hostname=" + node, "--advertise-tags=" + ",".join(tags),
-            "--timeout=60s",
-        ], check=True, stdout=subprocess.PIPE, text=True)
+        subprocess.run([*command, "--timeout=60s"], check=True, stdout=subprocess.PIPE, text=True)
         if status()["BackendState"] != "Running":
             raise RuntimeError("Tailscale enrollment did not reach Running")
         return True
     preferences = json.loads(run("tailscale", "debug", "prefs"))
-    if preferences.get("Hostname") != node or sorted(preferences.get("AdvertiseTags") or []) != sorted(tags):
-        subprocess.run([
-            "tailscale", "set", "--hostname=" + node,
-            "--advertise-tags=" + ",".join(tags),
-        ], check=True, stdout=subprocess.PIPE, text=True)
-        return True
-    return False
+    changed = False
+    if preferences.get("Hostname") != node:
+        subprocess.run(
+            ["tailscale", "set", "--hostname=" + node],
+            check=True, stdout=subprocess.PIPE, text=True,
+        )
+        changed = True
+    if sorted(preferences.get("AdvertiseTags") or []) != sorted(tags):
+        # Tags are authentication identity in Tailscale; `tailscale set` cannot
+        # change them. Re-authenticate with the managed key and desired tags.
+        subprocess.run([*command, "--force-reauth"], check=True, stdout=subprocess.PIPE, text=True)
+        preferences = json.loads(run("tailscale", "debug", "prefs"))
+        if preferences.get("Hostname") != node or sorted(preferences.get("AdvertiseTags") or []) != sorted(tags):
+            raise RuntimeError("Tailscale preferences did not converge after re-authentication")
+        changed = True
+    return changed
 
 
 def configure(node):
