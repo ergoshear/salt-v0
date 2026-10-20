@@ -138,6 +138,15 @@ node readiness, cross-worker pod traffic, pod DNS, metrics, and existing
 Argo CD HTTPS ingress. Registration alone does not validate pod networking.
 Do not print API keys, auth keys, or whole pillar data during verification.
 
+## MLOps storage
+
+Only `mlops-node-5` receives `mlops.storage`. It removes that host's unused
+4 TB WDC physical volume from the existing `fedora` volume group, clears the
+LVM PV signature, formats its partition as ext4, and mounts it at
+`/srv/storage`. Salt persists the mount in `/etc/fstab` using the disk's
+stable `/dev/disk/by-id` path. This intentionally replaces the partition's
+LVM metadata with a new filesystem.
+
 ## Security deployment ordering
 
 Inference states now include `mlops.backend`. Seed a strong, single-line

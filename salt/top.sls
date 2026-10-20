@@ -17,6 +17,8 @@ base:
     - k3s.agent
   'mlops-node-4':
     - mlops.r9700
+  'mlops-node-5':
+    - mlops.storage
   'mlops-node-6':
     - mlops.rtx-4090
   'mlops-node-7':

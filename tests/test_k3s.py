@@ -177,6 +177,7 @@ class StateTests(unittest.TestCase):
         top = yaml.safe_load((ROOT / "salt/top.sls").read_text())["base"]
         self.assertIn("tailscale", top["*"])
         self.assertIn("mlops.rtx-4090", top["mlops-node-6"])
+        self.assertIn("mlops.storage", top["mlops-node-5"])
         self.assertTrue((ROOT / "salt/mlops/rtx-4090/init.sls").is_file())
         self.assertFalse((ROOT / "salt/mlops/rtx-4090/ini.sls").exists())
         self.assertEqual(
@@ -188,8 +189,49 @@ class StateTests(unittest.TestCase):
                 set(render("k3s/agent", node, {"K3S_AGENT_TOKEN": "test"})),
                 {"k3s-agent-prerequisites"},
             )
+        self.assertEqual(
+            set(render("mlops/storage", "mlops-node-4")),
+            {"mlops-storage-target-guard"},
+        )
         self.assertIn("k3s-agent-prerequisites", render("k3s/agent", "mlops-node-0"))
         self.assertIn("tailscale-missing-enrollment", render("tailscale", "mlops-node-0"))
+
+    def test_storage_state_detaches_and_mounts_the_specific_disk(self):
+        state = render("mlops/storage", "mlops-node-5")
+        disk = (
+            "/dev/disk/by-id/"
+            "ata-WDC_WD40EZAZ-19SF3B0_WD-WX42DA063C4T-part1"
+        )
+
+        self.assertEqual(set(state), {
+            "mlops-storage-vgreduce",
+            "mlops-storage-pv-absent",
+            "mlops-storage-filesystem",
+            "mlops-storage-mount",
+        })
+        vgreduce = options(state, "mlops-storage-vgreduce", "cmd.run")
+        self.assertEqual(vgreduce["name"], f"vgreduce fedora {disk}")
+        self.assertIn(disk, vgreduce["onlyif"])
+
+        pv = options(state, "mlops-storage-pv-absent", "lvm.pv_absent")
+        self.assertEqual(pv["name"], disk)
+        self.assertEqual(pv["require"], [{"cmd": "mlops-storage-vgreduce"}])
+
+        filesystem = options(state, "mlops-storage-filesystem", "blockdev.formatted")
+        self.assertEqual(filesystem["name"], disk)
+        self.assertEqual(filesystem["fs_type"], "ext4")
+        self.assertFalse(filesystem["force"])
+        self.assertEqual(
+            filesystem["require"], [{"lvm": "mlops-storage-pv-absent"}]
+        )
+
+        mount = options(state, "mlops-storage-mount", "mount.mounted")
+        self.assertEqual(mount["name"], "/srv/storage")
+        self.assertEqual(mount["device"], disk)
+        self.assertEqual(mount["fstype"], "ext4")
+        self.assertTrue(mount["persist"])
+        self.assertEqual(mount["pass_num"], 2)
+        self.assertEqual(mount["require"], [{"blockdev": "mlops-storage-filesystem"}])
 
     def test_agent_configs_protect_token_and_use_tailnet(self):
         token = 'test:"token\\with\nspecial-characters'
