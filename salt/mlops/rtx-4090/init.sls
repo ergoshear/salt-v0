@@ -1,5 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
+include:
+  - mlops.backend
 {% set glimmer_dir = home ~ '/models/Muse-Glimmer-30B-GGUF' %}
 
 # ==============================================================================
@@ -194,7 +196,7 @@ rtx4090_tuned_profile:
       - service: rtx4090_tuned_service
 
 # ==============================================================================
-# 6. Open Port 8080/tcp in Firewalld
+# 6. Remove the legacy blanket inference port; mlops.backend owns access.
 # ==============================================================================
 rtx4090_firewalld_service:
   service.running:
@@ -205,8 +207,8 @@ rtx4090_firewalld_service:
 
 rtx4090_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
-    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
+    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
+    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
     - require:
       - service: rtx4090_firewalld_service
 
@@ -449,7 +451,8 @@ rtx4090_router_systemd_unit:
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
-          --port 8080
+          --port 8080 \
+          --api-key-file {{ home }}/.config/llama/backend-key
 
         ExecStop=/usr/bin/podman stop -t 10 llama-cuda-router
         Restart=on-failure
@@ -461,6 +464,8 @@ rtx4090_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: rtx4090_systemd_user_dir
+      - cmd: inference-backend-header
+      - cmd: inference-firewall-apply
 
 rtx4090_enable_and_start_router_service:
   cmd.run:

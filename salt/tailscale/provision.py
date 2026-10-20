@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 DIRECTORY = Path("/etc/salt/tailscale")
 TAILNET = "tailb11f97.ts.net"
 CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1"}
+WORKERS = CLUSTER - {"k3s-control-plane-01"}
 GRANT = {
     "src": ["tag:k8s"],
     "dst": ["tag:k8s"],
@@ -23,7 +24,7 @@ GRANT = {
 }
 TOKEN_FILE = Path(
     "/var/cache/salt/master/minions/"
-    "k3s-control-plane-01/files/k3s-control-plane-01/k3s-token"
+    "k3s-control-plane-01/files/k3s-control-plane-01/k3s-agent-token"
 )
 
 
@@ -75,6 +76,23 @@ def write_pillar(path, value, owner):
     temporary.replace(path)
 
 
+def restrict_cluster_credentials(token, owner):
+    hosts = DIRECTORY / "pillar" / "hosts"
+    # Include retired/unaccepted minions, not just today's accepted key list.
+    for path in hosts.glob("*/K3S_TOKEN"):
+        path.unlink()
+    for path in hosts.glob("*/K3S_AGENT_TOKEN"):
+        if path.parent.name not in WORKERS or not token:
+            path.unlink()
+    if token:
+        for node in WORKERS:
+            directory = hosts / node
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chown(directory, owner.pw_uid, owner.pw_gid)
+            directory.chmod(0o700)
+            write_pillar(directory / "K3S_AGENT_TOKEN", token, owner)
+
+
 def provision():
     os.umask(0o077)
     DIRECTORY.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -90,6 +108,7 @@ def provision():
         os.chown(DIRECTORY, -1, owner.pw_gid)
         DIRECTORY.chmod(0o710)
         token = read_token()
+        restrict_cluster_credentials(token, owner)
         policy, headers = api(key, "/acl")
         original = json.dumps(policy, sort_keys=True)
         merge_policy(policy)
@@ -115,10 +134,6 @@ def provision():
                 folder.chmod(0o700)
             if node == "salt-master-01":
                 write_pillar(directory / "TS_API_KEY", key, owner)
-            if token:
-                write_pillar(directory / "K3S_TOKEN", token, owner)
-            elif (directory / "K3S_TOKEN").exists():
-                (directory / "K3S_TOKEN").unlink()
             cache = DIRECTORY / (hashlib.sha256(node.encode()).hexdigest() + ".json")
             if cache.exists() and json.loads(cache.read_text())["expires"] > time.time() + 600:
                 write_pillar(directory / "TAILSCALE_AUTH_KEY", json.loads(cache.read_text())["key"], owner)

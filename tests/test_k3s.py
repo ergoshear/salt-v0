@@ -185,7 +185,7 @@ class StateTests(unittest.TestCase):
         )
         for node in ["mlops-node-2", "mlops-nodes-0", "salt-master-01"]:
             self.assertEqual(
-                set(render("k3s/agent", node, {"K3S_TOKEN": "test"})),
+                set(render("k3s/agent", node, {"K3S_AGENT_TOKEN": "test"})),
                 {"k3s-agent-prerequisites"},
             )
         self.assertIn("k3s-agent-prerequisites", render("k3s/agent", "mlops-node-0"))
@@ -194,7 +194,7 @@ class StateTests(unittest.TestCase):
     def test_agent_configs_protect_token_and_use_tailnet(self):
         token = 'test:"token\\with\nspecial-characters'
         for node in CLUSTER - {"k3s-control-plane-01"}:
-            state = render("k3s/agent", node, {"K3S_TOKEN": token})
+            state = render("k3s/agent", node, {"K3S_AGENT_TOKEN": token})
             managed = options(state, "k3s-agent-config", "file.managed")
             self.assertFalse(managed["show_changes"])
             self.assertEqual(managed["mode"], "0600")

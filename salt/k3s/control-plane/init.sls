@@ -13,6 +13,22 @@ k3s-pkgs-install:
       - helm
       - kustomize
 
+k3s-agent-only-token:
+  cmd.run:
+    - name: |
+        /usr/bin/python3 - <<'PY'
+        import os
+        import secrets
+        from pathlib import Path
+        path = Path("/etc/rancher/k3s/agent-token")
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(secrets.token_hex(32) + "\n")
+        PY
+    - creates: /etc/rancher/k3s/agent-token
+    - hide_output: True
+
 k3s-control-plane-config:
   file.managed:
     - name: /etc/rancher/k3s/config.yaml
@@ -21,11 +37,14 @@ k3s-control-plane-config:
     - mode: '0600'
     - makedirs: True
     - contents: |
+        agent-token-file: /etc/rancher/k3s/agent-token
         tls-san:
           - k3s.ergoshear.dev
           - k3s-control-plane-01.tailb11f97.ts.net
         node-taint:
           - "node-role.kubernetes.io/control-plane=true:NoSchedule"
+    - require:
+      - cmd: k3s-agent-only-token
 
 k3s-control-plane-systemd-network:
   file.managed:
@@ -116,8 +135,8 @@ k3s-network-verifier:
 
 k3s-publish-token:
   cmd.run:
-    - name: salt-call cp.push /var/lib/rancher/k3s/server/node-token upload_path=k3s-control-plane-01/k3s-token
-    - onlyif: test -s /var/lib/rancher/k3s/server/node-token
+    - name: salt-call cp.push /var/lib/rancher/k3s/server/agent-token upload_path=k3s-control-plane-01/k3s-agent-token
+    - onlyif: test -s /var/lib/rancher/k3s/server/agent-token && test ! /var/lib/rancher/k3s/server/agent-token -ef /var/lib/rancher/k3s/server/token
     - require:
       - service: k3s-service
 {% endif %}

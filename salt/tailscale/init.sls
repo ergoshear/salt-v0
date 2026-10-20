@@ -49,4 +49,27 @@ tailscale-enroll:
       - service: tailscale-service
       - file: tailscale-auth-key
       - file: tailscale-node-helper
+
+salt-tailnet-master-reachable:
+  cmd.run:
+    - name: /usr/bin/python3 -c 'import socket; socket.create_connection(("salt-master-01.tailb11f97.ts.net", 4506), timeout=10).close()'
+    - require:
+      - cmd: tailscale-enroll
+
+salt-tailnet-master-config:
+  file.managed:
+    - name: /etc/salt/minion.d/zz-tailnet-master.conf
+    - mode: '0600'
+    - makedirs: True
+    - contents: |
+        master: salt-master-01.tailb11f97.ts.net
+    - require:
+      - cmd: salt-tailnet-master-reachable
+
+salt-tailnet-minion:
+  service.running:
+    - name: salt-minion
+    - enable: True
+    - watch:
+      - file: salt-tailnet-master-config
 {% endif %}

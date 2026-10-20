@@ -138,6 +138,52 @@ node readiness, cross-worker pod traffic, pod DNS, metrics, and existing
 Argo CD HTTPS ingress. Registration alone does not validate pod networking.
 Do not print API keys, auth keys, or whole pillar data during verification.
 
+## Security deployment ordering
+
+Inference states now include `mlops.backend`. Seed a strong, single-line
+`INFERENCE_BACKEND_KEY` only for nodes 4, 6, 7 and 9 (or securely preseed
+`/home/mlops/.config/llama/backend-key`, owned by `mlops`, mode 0600).
+Use the same value in the `inference-backend` Kubernetes Secret in the
+`litellm` and `hermes-workspace` namespaces. No key belongs in Git, CLI
+arguments, state output or a global pillar. Stage client credentials first.
+The llama-server key file and warmup authorization header are private files.
+The independent nftables input hook precedes Tailscale/firewalld accepts and
+limits both address families to tagged, canonical egress-proxy identities.
+The boot service precedes the existing UID 1000 GPU user service; the timer
+refreshes proxy addresses every 30 seconds. Missing proxy information denies
+all remote inference. The Kubernetes proxy NetworkPolicy is also required:
+all pods otherwise share those two tailnet identities.
+
+Do **not** apply cloud Salt rule removal before migrating and verifying all
+accepted minions. `tailscale` checks the tailnet master request port before
+writing its minion master setting. Recheck every accepted key with Salt
+`test.ping`, the effective minion `master` setting and established connections.
+Only then enable the master-only `SALT_TAILNET_ENFORCE` pillar, apply
+`salt.master`, and remove cloud ingress 4505–4506. No public client exceptions
+are intended. Host enforcement covers IPv4 and IPv6, including an existing
+connection arriving outside `tailscale0`.
+
+The control plane creates a separate random agent-only token using k3s
+`agent-token-file`. Only `server/agent-token` is published. The provisioner
+removes **all** legacy `K3S_TOKEN` host pillar files, including retired hosts,
+and supplies `K3S_AGENT_TOKEN` only to workers 0 and 1. The master state removes
+the old cached server-token upload. Apply the control plane, refresh master
+provisioning/pillars, apply workers, and verify both workers before rotating
+the previously over-distributed **server** token.
+
+Rotation must use supported `k3s token rotate`, not manual replacement of
+`server/token`: bootstrap data is encrypted using that credential. First
+take a datastore-appropriate recoverable backup with its original server
+token (SQLite and embedded etcd need different backup procedures). Keep
+rotation output in a root-only recovery file, restart the server as required
+by the installed k3s version, and verify worker reconnects, DNS, metrics and
+cross-worker pod traffic. Refresh/clear old minion pillar caches as well.
+An old datastore backup still needs its matching original token for restore.
+
+The 2026-10-20 live inference changes are independent of the Salt master
+rollout. Salt transport migration, host/cloud Salt enforcement and k3s
+server-token rotation remain outstanding until trusted master access exists.
+
 ## TuneD
 
 The `system.tuned` state applies to all minions, installing and enabling

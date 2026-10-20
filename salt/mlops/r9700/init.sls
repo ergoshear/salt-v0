@@ -1,5 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
+include:
+  - mlops.backend
 {% set gemma4_dir = home ~ '/models/Gemma-4-31B-it-qat-GGUF' %}
 {% set qwen36_dir = home ~ '/models/Qwen3.6-35B-A3B-MTP-GGUF' %}
 
@@ -130,7 +132,7 @@ r9700_apply_amdgpu_dpm_now:
     - onlyif: ls /sys/class/drm/card*/device/power_dpm_force_performance_level
 
 # ==============================================================================
-# 6. Open Port 8080/tcp in Firewalld for LAN & VS Code Copilot Access
+# 6. Remove the legacy blanket inference port; mlops.backend owns access.
 # ==============================================================================
 r9700_firewalld_service:
   service.running:
@@ -141,8 +143,8 @@ r9700_firewalld_service:
 
 r9700_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
-    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
+    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
+    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
     - require:
       - service: r9700_firewalld_service
 
@@ -469,7 +471,8 @@ r9700_router_systemd_unit:
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
-          --port 8080
+          --port 8080 \
+          --api-key-file {{ home }}/.config/llama/backend-key
 
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
         Restart=on-failure
@@ -481,6 +484,8 @@ r9700_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: r9700_systemd_user_dir
+      - cmd: inference-backend-header
+      - cmd: inference-firewall-apply
 
 r9700_enable_and_start_router_service:
   cmd.run:

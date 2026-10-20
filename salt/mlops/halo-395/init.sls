@@ -1,5 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
+include:
+  - mlops.backend
 {% set coder_dir = home ~ '/models/Qwen3-Coder-30B-A3B-GGUF' %}
 {% set flash_dir = home ~ '/models/Qwen3.8-Flash-Next-GGUF' %}
 
@@ -138,7 +140,7 @@ halo395_apply_amdgpu_dpm_now:
     - onlyif: ls /sys/class/drm/card*/device/power_dpm_force_performance_level
 
 # ==============================================================================
-# 6. Open Port 8080/tcp in Firewalld for LAN & LiteLLM Gateway Access
+# 6. Remove the legacy blanket inference port; mlops.backend owns access.
 # ==============================================================================
 halo395_firewalld_service:
   service.running:
@@ -149,8 +151,8 @@ halo395_firewalld_service:
 
 halo395_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
-    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
+    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
+    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
     - require:
       - service: halo395_firewalld_service
 
@@ -397,12 +399,13 @@ halo395_router_systemd_unit:
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
-          --port 8080
+          --port 8080 \
+          --api-key-file {{ home }}/.config/llama/backend-key
 
         # Pre-warm both primary models into 128GB LPDDR5X in the background on startup
         ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
           for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next-Medium"; do \
-            curl -s http://127.0.0.1:8080/v1/chat/completions \
+            curl -s --header @{{ home }}/.config/llama/auth-header http://127.0.0.1:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
               -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"chat_template_kwargs\":{\"enable_thinking\":false,\"reasoning_effort\":\"none\"}}" >/dev/null 2>&1 \
           done &'
@@ -417,6 +420,8 @@ halo395_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: halo395_systemd_user_dir
+      - cmd: inference-backend-header
+      - cmd: inference-firewall-apply
 
 halo395_enable_and_start_router_service:
   cmd.run:
