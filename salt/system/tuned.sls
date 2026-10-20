@@ -28,6 +28,6 @@ tuned-service:
 tuned-profile-active:
   cmd.run:
     - name: tuned-adm profile {{ target_profile }}
-    - unless: tuned-adm active | grep -q "Current active profile: {{ target_profile }}$"
+    - unless: 'tuned-adm active | grep -q "Current active profile: {{ target_profile }}$"'
     - require:
       - service: tuned-service
