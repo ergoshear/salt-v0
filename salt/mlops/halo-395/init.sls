@@ -3,8 +3,7 @@
 include:
   - mlops.backend
   - mlops.huggingface
-{% set coder_dir = home ~ '/models/Qwen3-Coder-30B-A3B-GGUF' %}
-{% set flash_dir = home ~ '/models/Qwen3.8-Flash-Next-GGUF' %}
+{% set dgemma_dir = home ~ '/models/DiffusionGemma-26B-A4B-GGUF' %}
 
 # ==============================================================================
 # 1. Base Packages & System Dependencies (Fedora 44)
@@ -141,7 +140,7 @@ halo395_apply_amdgpu_dpm_now:
     - onlyif: ls /sys/class/drm/card*/device/power_dpm_force_performance_level
 
 # ==============================================================================
-# 6. Open Port 8080/tcp in Firewalld for LAN & LiteLLM Gateway Access
+# 6. Ensure Firewalld Is Running (inference-firewall Manages Port 8080 Rules)
 # ==============================================================================
 halo395_firewalld_service:
   service.running:
@@ -152,8 +151,8 @@ halo395_firewalld_service:
 
 halo395_firewall_port_8080:
   cmd.run:
-    - name: firewall-cmd --permanent --add-port=8080/tcp && firewall-cmd --reload
-    - unless: firewall-cmd --list-ports | grep -q "8080/tcp"
+    - name: firewall-cmd --permanent --remove-port=8080/tcp; firewall-cmd --remove-port=8080/tcp
+    - onlyif: firewall-cmd --query-port=8080/tcp || firewall-cmd --permanent --query-port=8080/tcp
     - require:
       - service: halo395_firewalld_service
 
@@ -178,57 +177,7 @@ halo395_user_bashrc_path:
       - user: halo395_user_account
 
 # ==============================================================================
-# 8. Download Qwen3-Coder-30B-A3B & Qwen3.8-Flash-Next (+ MTP + Sharp Template)
-# ==============================================================================
-halo395_download_qwen3_coder_30b:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF
-        --include "*UD-Q4_K_XL*"
-        --local-dir {{ coder_dir }}
-    - runas: {{ user }}
-    - creates: {{ coder_dir }}/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf
-    - timeout: 3600
-    - require:
-      - cmd: halo395_install_hf_cli
-
-halo395_download_qwen38_flash_next:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3.8-Flash-Next-GGUF
-        --include "*UD-IQ4_XS*"
-        --local-dir {{ flash_dir }}
-    - runas: {{ user }}
-    - creates: {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-    - timeout: 7200
-    - require:
-      - cmd: halo395_install_hf_cli
-
-halo395_download_qwen38_flash_next_mtp:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ggml-org/Qwen3.8-Flash-Next-GGUF
-        mtp-Qwen3.8-Flash-Next-Q8_0.gguf
-        --local-dir {{ flash_dir }}
-    - runas: {{ user }}
-    - creates: {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
-    - timeout: 1800
-    - require:
-      - cmd: halo395_install_hf_cli
-
-halo395_download_sharp_template:
-  cmd.run:
-    - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download peculiar-ragdoll/Qwen-Sharp-Chat-Templates
-        chat_template.jinja
-        --local-dir {{ flash_dir }}
-    - runas: {{ user }}
-    - creates: {{ flash_dir }}/chat_template.jinja
-    - require:
-      - cmd: halo395_install_hf_cli
-
-# ==============================================================================
-# 9. Enable Linger, Create Vulkan RADV Toolbx & Compile llama.cpp for Zen 5
+# 8. Enable Linger, Create Vulkan RADV Toolbx & Compile llama.cpp PR #24423
 # ==============================================================================
 halo395_enable_linger:
   cmd.run:
@@ -254,7 +203,7 @@ halo395_create_vulkan_toolbox:
       - file: halo395_memlock_limits
       - cmd: halo395_podman_migrate
 
-halo395_rebuild_llama_for_host_cpu:
+halo395_build_llama_pr24423_diffusion:
   cmd.run:
     - name: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
@@ -263,36 +212,78 @@ halo395_rebuild_llama_for_host_cpu:
         podman start llama-vulkan-radv
         podman exec --user 0 llama-vulkan-radv bash -e -c '
           dnf reinstall -y binutils
-          dnf install -y lld mold git cmake gcc gcc-c++ ninja-build vulkan-headers vulkan-loader-devel glslc libcurl-devel
+          dnf install -y lld mold git cmake gcc gcc-c++ ninja-build \
+            vulkan-headers vulkan-loader-devel glslc libcurl-devel \
+            python3-pip python3-sentencepiece python3-protobuf
           if [ ! -e /usr/bin/ld ]; then
             ln -sf /usr/bin/ld.bfd /usr/bin/ld || ln -sf /usr/bin/ld.lld /usr/bin/ld
           fi
-          rm -rf /tmp/llama.cpp
-          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
-          cmake -B /tmp/llama.cpp/build -S /tmp/llama.cpp -G Ninja \
+          rm -rf /opt/llama-pr24423
+          git clone https://github.com/ggml-org/llama.cpp.git /opt/llama-pr24423
+          cd /opt/llama-pr24423
+          git fetch origin pull/24423/head:pr-24423
+          git checkout pr-24423
+          cmake -B /opt/llama-pr24423/build -S /opt/llama-pr24423 -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DGGML_VULKAN=ON \
             -DGGML_NATIVE=ON
-          cmake --build /tmp/llama.cpp/build --config Release -j $(nproc) --target llama-server llama-cli
-          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/local/bin/
-          cp -af /tmp/llama.cpp/build/bin/llama-* /usr/bin/ 2>/dev/null || true
-          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
-          cp -af /tmp/llama.cpp/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
+          cmake --build /opt/llama-pr24423/build --config Release -j $(nproc)
+          cp -af /opt/llama-pr24423/build/bin/llama-* /usr/local/bin/
+          cp -af /opt/llama-pr24423/build/bin/llama-* /usr/bin/ 2>/dev/null || true
+          cp -af /opt/llama-pr24423/build/bin/*.so* /usr/local/lib64/ 2>/dev/null || true
+          cp -af /opt/llama-pr24423/build/bin/*.so* /usr/lib64/ 2>/dev/null || true
           ldconfig
-          touch /etc/llama-built-native-host-cpu
-          rm -rf /tmp/llama.cpp
+          touch /etc/llama-built-pr24423-diffusion
+          rm -rf /opt/llama-pr24423/build
         '
     - runas: {{ user }}
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         podman start llama-vulkan-radv >/dev/null 2>&1
-        podman exec llama-vulkan-radv test -f /etc/llama-built-native-host-cpu
-    - timeout: 1200
+        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-diffusion
+    - timeout: 1800
     - require:
       - cmd: halo395_create_vulkan_toolbox
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini (Right-Sized for 128GB GTT --models-max 2)
+# 9. Download (or Convert + Quantize) DiffusionGemma-26B-A4B-it GGUF
+# ==============================================================================
+halo395_download_diffusiongemma_26b_a4b:
+  cmd.run:
+    - name: |
+        mkdir -p {{ dgemma_dir }}
+        # 1. Try pre-quantized GGUF repo first
+        if HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/diffusiongemma-26b-A4B-it-GGUF \
+             --include "*UD-Q4_K_XL*" --local-dir {{ dgemma_dir }} && \
+           ls {{ dgemma_dir }}/*UD-Q4_K_XL*.gguf >/dev/null 2>&1; then
+          cp -lf $(ls {{ dgemma_dir }}/*UD-Q4_K_XL*.gguf | head -n 1) {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf || true
+        else
+          # 2. Fallback: Download google/diffusiongemma-26b-A4B-it & convert with PR #24423 converter
+          HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download google/diffusiongemma-26b-A4B-it \
+            --local-dir {{ dgemma_dir }}/hf-source
+          export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
+          podman start llama-vulkan-radv
+          podman exec llama-vulkan-radv bash -e -c '
+            pip3 install --user -q torch numpy safetensors sentencepiece protobuf transformers gguf
+            python3 /opt/llama-pr24423/convert_hf_to_gguf.py \
+              {{ dgemma_dir }}/hf-source \
+              --outfile {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
+              --outtype f16
+            /usr/local/bin/llama-quantize \
+              {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf \
+              {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf Q4_K_M
+            rm -f {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-f16.gguf
+          '
+        fi
+    - runas: {{ user }}
+    - creates: {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf
+    - timeout: 7200
+    - require:
+      - cmd: halo395_install_hf_cli
+      - cmd: halo395_build_llama_pr24423_diffusion
+
+# ==============================================================================
+# 10. Manage ~/models/models.ini (Single Resident Diffusion MoE = 0s Swap!)
 # ==============================================================================
 halo395_models_preset_ini:
   file.managed:
@@ -302,8 +293,8 @@ halo395_models_preset_ini:
     - mode: '0644'
     - makedirs: True
     - contents: |
-        [Qwen3-Coder-30B-A3B]
-        model = {{ coder_dir }}/Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf
+        [DiffusionGemma-26B-A4B]
+        model = {{ dgemma_dir }}/diffusiongemma-26b-A4B-it-Q4_K_M.gguf
         fit = off
         n-gpu-layers = 999
         load-mode = none
@@ -313,43 +304,17 @@ halo395_models_preset_ini:
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 65536
-        ubatch-size = 512
-        batch-size = 2048
+        ubatch-size = 1024
+        batch-size = 4096
         threads = 8
-        temp = 0.7
-        top-p = 0.80
-        top-k = 20
-
-        [Qwen3.8-Flash-Next]
-        model = {{ flash_dir }}/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
-        model-draft = {{ flash_dir }}/mtp-Qwen3.8-Flash-Next-Q8_0.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ flash_dir }}/chat_template.jinja
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-mtp
-        cache-type-k = q8_0
-        cache-type-v = q4_0
-        ctx-size = 65536
-        ubatch-size = 512
-        batch-size = 2048
-        threads = 8
-        temp = 1.0
+        temp = 0.2
         top-p = 0.95
         top-k = 40
     - require:
-      - cmd: halo395_download_qwen3_coder_30b
-      - cmd: halo395_download_qwen38_flash_next
-      - cmd: halo395_download_qwen38_flash_next_mtp
-      - cmd: halo395_download_sharp_template
+      - cmd: halo395_download_diffusiongemma_26b_a4b
 
 # ==============================================================================
-# 11. Systemd User Service: strix-llama-router.service (--models-max 2 Resident)
+# 11. Systemd User Service: strix-llama-router.service (--models-max 1 Resident)
 # ==============================================================================
 halo395_systemd_user_dir:
   file.directory:
@@ -369,7 +334,7 @@ halo395_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Strix Halo 128GB llama-server Router (--models-max 2 Zero-Swap Resident Mode)
+        Description=Strix Halo 128GB llama-server Router (PR #24423 DiffusionGemma-26B-A4B Resident Mode)
         After=network-online.target
         Wants=network-online.target
 
@@ -384,21 +349,19 @@ halo395_router_systemd_unit:
         ExecStart=/usr/bin/toolbox run --container llama-vulkan-radv \
           llama-server \
           --models-preset {{ home }}/models/models.ini \
-          --models-max 2 \
+          --models-max 1 \
           --models-autoload \
           --jinja \
           --api-key-file {{ home }}/.config/llama/backend-key \
           --host 0.0.0.0 \
           --port 8080
 
-        # Pre-warm both resident models into 128GB LPDDR5X on startup (stop on <think> so it finishes in <1s)
+        # Pre-warm DiffusionGemma-26B-A4B into 128GB LPDDR5X on startup
         ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
-          for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next"; do \
-            curl -s http://127.0.0.1:8080/v1/chat/completions \
-              -H "Content-Type: application/json" \
-              --header @{{ home }}/.config/llama/auth-header \
-              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"stop\":[\"<think>\",\"\\n\"]}" >/dev/null 2>&1 \
-          done &'
+          curl -s http://127.0.0.1:8080/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            --header @{{ home }}/.config/llama/auth-header \
+            -d "{\"model\":\"DiffusionGemma-26B-A4B\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":16}" >/dev/null 2>&1 &'
 
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
         Restart=on-failure
@@ -426,7 +389,7 @@ halo395_enable_and_start_router_service:
     - require:
       - cmd: halo395_enable_linger
       - cmd: halo395_create_vulkan_toolbox
-      - cmd: halo395_rebuild_llama_for_host_cpu
+      - cmd: halo395_build_llama_pr24423_diffusion
       - file: halo395_models_preset_ini
       - file: halo395_router_systemd_unit
 
@@ -439,7 +402,7 @@ halo395_restart_router_on_config_change:
         systemctl --user restart strix-llama-router.service
     - runas: {{ user }}
     - onchanges:
-      - cmd: halo395_rebuild_llama_for_host_cpu
+      - cmd: halo395_build_llama_pr24423_diffusion
       - file: halo395_router_systemd_unit
       - file: halo395_models_preset_ini
     - require:
