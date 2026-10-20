@@ -381,7 +381,7 @@ strix_x2_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Strix Halo EVO-X2 Multi-Model llama-server Router (Qwen3-Coder-30B & Qwen3.8-Flash-Next)
+        Description=Strix Halo EVO-X2 llama-server Router (--models-max 2)
         After=network-online.target
         Wants=network-online.target
 
@@ -396,11 +396,18 @@ strix_x2_router_systemd_unit:
         ExecStart=/usr/bin/toolbox run --container llama-vulkan-radv \
           llama-server \
           --models-preset {{ home }}/models/models.ini \
-          --models-max 1 \
+          --models-max 2 \
           --models-autoload \
           --jinja \
           --host 0.0.0.0 \
           --port 8080
+
+        ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
+          for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next-Medium"; do \
+            curl -s http://127.0.0.1:8080/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"chat_template_kwargs\":{\"enable_thinking\":false}}" >/dev/null 2>&1 & \
+          done'
 
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
         Restart=on-failure
