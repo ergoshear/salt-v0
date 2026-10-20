@@ -1,5 +1,6 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
+{% set python_version = grains['pythonversion'][:2] | join('.') %}
 include:
   - mlops.backend
   - mlops.huggingface
@@ -23,6 +24,27 @@ rtx4090_base_packages:
       - kernel-devel
       - kernel-headers
       - fedora-workstation-repositories
+
+# Glances requires the pynvml module for NVIDIA GPU telemetry. Install the
+# maintained nvidia-ml-py distribution in an isolated target directory, then
+# expose that directory to the system Python used by /usr/bin/glances.
+rtx4090_glances_nvidia_ml_python:
+  pip.installed:
+    - name: nvidia-ml-py
+    - bin_env: /usr/bin/python3
+    - target: /opt/glances-nvidia-ml
+    - require:
+      - pkg: rtx4090_base_packages
+
+rtx4090_glances_nvidia_ml_path:
+  file.managed:
+    - name: /usr/lib/python{{ python_version }}/site-packages/glances-nvidia-ml.pth
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: /opt/glances-nvidia-ml
+    - require:
+      - pip: rtx4090_glances_nvidia_ml_python
 
 # ==============================================================================
 # 2. Enable RPM Fusion (Via download1.rpmfusion.org to Bypass Dead Mirror Redirect)
