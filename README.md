@@ -145,7 +145,12 @@ Only `mlops-node-5` receives `mlops.storage`. It removes that host's unused
 LVM PV signature, formats its partition as ext4, and mounts it at
 `/srv/storage`. Salt persists the mount in `/etc/fstab` using the disk's
 stable `/dev/disk/by-id` path. This intentionally replaces the partition's
-LVM metadata with a new filesystem.
+LVM metadata with a new filesystem. It exports that filesystem read/write over
+NFSv4 on the LAN, restricted to `mlops-node-*.lan` clients. Other Salt minions
+whose IDs match `mlops-node-*` mount `mlops-node-5.lan:/` at `/srv/storage`
+with a persistent fstab entry; node 5 keeps its local disk mount. The NFS
+firewall rule allows TCP 2049 only from the `192.168.202.0/24` LAN. A new
+mlops node must use a matching `.lan` hostname to receive the export.
 
 ## Security deployment ordering
 

@@ -30,10 +30,10 @@ DEPLOY = load("deploy", "salt/tailscale/deploy.py")
 VERIFY = load("verify", "salt/k3s/verify.py")
 
 
-def render(state, node, pillar=None):
+def render(state, node, pillar=None, filename="init.sls"):
     pillar = pillar or {}
     template = Environment(undefined=StrictUndefined).from_string(
-        (ROOT / "salt" / state / "init.sls").read_text()
+        (ROOT / "salt" / state / filename).read_text()
     )
     return yaml.safe_load(template.render(
         grains={"id": node},
@@ -178,6 +178,10 @@ class StateTests(unittest.TestCase):
         self.assertIn("tailscale", top["*"])
         self.assertIn("mlops.rtx-4090", top["mlops-node-6"])
         self.assertIn("mlops.storage", top["mlops-node-5"])
+        self.assertEqual(top["mlops-node-*"], [
+            {"match": "glob"},
+            "mlops.storage.client",
+        ])
         self.assertTrue((ROOT / "salt/mlops/rtx-4090/init.sls").is_file())
         self.assertFalse((ROOT / "salt/mlops/rtx-4090/ini.sls").exists())
         self.assertEqual(
@@ -203,12 +207,12 @@ class StateTests(unittest.TestCase):
             "ata-WDC_WD40EZAZ-19SF3B0_WD-WX42DA063C4T-part1"
         )
 
-        self.assertEqual(set(state), {
+        self.assertTrue({
             "mlops-storage-vgreduce",
             "mlops-storage-pv-absent",
             "mlops-storage-filesystem",
             "mlops-storage-mount",
-        })
+        } <= set(state))
         vgreduce = options(state, "mlops-storage-vgreduce", "cmd.run")
         self.assertEqual(vgreduce["name"], f"vgreduce fedora {disk}")
         self.assertIn(disk, vgreduce["onlyif"])
@@ -232,6 +236,61 @@ class StateTests(unittest.TestCase):
         self.assertTrue(mount["persist"])
         self.assertEqual(mount["pass_num"], 2)
         self.assertEqual(mount["require"], [{"blockdev": "mlops-storage-filesystem"}])
+
+    def test_storage_server_exports_read_write_only_for_mlop_node_names(self):
+        state = render("mlops/storage", "mlops-node-5")
+        directory = options(state, "mlops-storage-directory-permissions", "file.directory")
+        self.assertEqual(directory["name"], "/srv/storage")
+        self.assertEqual(directory["user"], "mlops")
+        self.assertEqual(directory["group"], "mlops")
+        self.assertEqual(directory["dir_mode"], "0770")
+
+        context = options(state, "mlops-storage-selinux-context", "selinux.fcontext_policy_present")
+        self.assertEqual(context["name"], "/srv/storage(/.*)?")
+        self.assertEqual(context["sel_type"], "public_content_rw_t")
+
+        exports = options(state, "mlops-storage-nfs-exports", "file.managed")
+        self.assertIn(
+            "/srv/storage mlops-node-*.lan(rw,sync,root_squash,no_subtree_check,fsid=0)",
+            exports["contents"],
+        )
+        firewall = options(state, "mlops-storage-nfs-firewall", "firewalld.present")
+        self.assertEqual(firewall["rich_rules"], [
+            'rule family="ipv4" source address="192.168.202.0/24" '
+            'port port="2049" protocol="tcp" accept',
+        ])
+        self.assertFalse(firewall["prune_rich_rules"])
+
+        service = options(state, "mlops-storage-nfs-server", "service.running")
+        self.assertEqual(service["name"], "nfs-server")
+        self.assertTrue(service["enable"])
+
+    def test_storage_clients_mount_nfs_except_on_local_storage_host(self):
+        state = render(
+            "mlops/storage", "mlops-node-0", filename="client.sls"
+        )
+        self.assertEqual(set(state), {
+            "mlops-storage-client-package",
+            "mlops-storage-client-mount",
+        })
+        mount = options(state, "mlops-storage-client-mount", "mount.mounted")
+        self.assertEqual(mount["name"], "/srv/storage")
+        self.assertEqual(mount["device"], "mlops-node-5.lan:/")
+        self.assertEqual(mount["fstype"], "nfs")
+        self.assertIn("vers=4.1", mount["opts"])
+        self.assertIn("rw", mount["opts"])
+        self.assertTrue(mount["persist"])
+        self.assertTrue(mount["mount"])
+        self.assertEqual(mount["retry"], {"attempts": 10, "interval": 30})
+
+        local = render(
+            "mlops/storage", "mlops-node-5", filename="client.sls"
+        )
+        self.assertEqual(set(local), {"mlops-storage-client-local"})
+        self.assertIn(
+            "mlops-storage-client-target-guard",
+            render("mlops/storage", "salt-master-01", filename="client.sls"),
+        )
 
     def test_agent_configs_protect_token_and_use_tailnet(self):
         token = 'test:"token\\with\nspecial-characters'
