@@ -180,6 +180,7 @@ class StateTests(unittest.TestCase):
         self.assertIn("mlops.storage", top["mlops-node-5"])
         self.assertEqual(top["mlops-node-*"], [
             {"match": "glob"},
+            "mlops.user",
             "mlops.storage.client",
         ])
         self.assertTrue((ROOT / "salt/mlops/rtx-4090/init.sls").is_file())
