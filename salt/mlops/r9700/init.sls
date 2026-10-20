@@ -2,6 +2,7 @@
 {% set home = '/home/' ~ user %}
 include:
   - mlops.backend
+  - mlops.huggingface
 {% set gemma4_dir = home ~ '/models/Gemma-4-31B-it-qat-GGUF' %}
 {% set qwen36_dir = home ~ '/models/Qwen3.6-35B-A3B-MTP-GGUF' %}
 
