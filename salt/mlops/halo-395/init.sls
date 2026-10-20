@@ -1,6 +1,7 @@
 {% set user = 'mlops' %}
 {% set home = '/home/' ~ user %}
 include:
+  - mlops.backend
   - mlops.huggingface
 {% set coder_dir = home ~ '/models/Qwen3-Coder-30B-A3B-GGUF' %}
 {% set flash_dir = home ~ '/models/Qwen3.8-Flash-Next-GGUF' %}
@@ -388,6 +389,7 @@ halo395_router_systemd_unit:
           --models-max 2 \
           --models-autoload \
           --jinja \
+          --api-key-file {{ home }}/.config/llama/backend-key \
           --host 0.0.0.0 \
           --port 8080
 
@@ -396,6 +398,7 @@ halo395_router_systemd_unit:
           for m in "Qwen3-Coder-30B-A3B" "Qwen3.8-Flash-Next"; do \
             curl -s http://127.0.0.1:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
+              --header @{{ home }}/.config/llama/auth-header \
               -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"stop\":[\"<think>\",\"\\n\"]}" >/dev/null 2>&1 \
           done &'
 
@@ -409,6 +412,7 @@ halo395_router_systemd_unit:
         WantedBy=default.target
     - require:
       - file: halo395_systemd_user_dir
+      - cmd: inference-backend-header
 
 halo395_enable_and_start_router_service:
   cmd.run:
