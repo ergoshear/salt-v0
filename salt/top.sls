@@ -25,4 +25,5 @@ base:
     - mlops.halo-495
   'mlops-node-*':
     - match: glob
+    - mlops.user
     - mlops.storage.client

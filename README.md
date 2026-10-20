@@ -144,6 +144,13 @@ node readiness, cross-worker pod traffic, pod DNS, metrics, and existing
 Argo CD HTTPS ingress. Registration alone does not validate pod networking.
 Do not print API keys, auth keys, or whole pillar data during verification.
 
+## MLOps access
+
+Every `mlops-node-*` minion receives the `mlops.user` state. It ensures the
+`mlops` account, a dedicated `NOPASSWD` sudoers entry, and the configured
+ed25519 public key. SSH password and keyboard-interactive authentication are
+disabled; `sshd` requires public-key authentication.
+
 ## MLOps storage
 
 Only `mlops-node-5` receives `mlops.storage`. It removes that host's unused
