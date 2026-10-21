@@ -3,6 +3,7 @@
 import ipaddress
 import json
 import subprocess
+import sys
 
 
 PROXIES = {"egress-proxies-0", "egress-proxies-1"}
@@ -39,12 +40,27 @@ def main():
     subprocess.run(
         ["nft", "add", "table", "inet", "inference_boundary"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=15,
     )
     try:
-        status = json.loads(subprocess.check_output(["tailscale", "status", "--json"]))
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        status = json.loads(
+            subprocess.check_output(["tailscale", "status", "--json"], timeout=15)
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            "Tailscale status lookup timed out; applying fail-closed inference rules.",
+            file=sys.stderr,
+        )
         status = {}
-    subprocess.run(["nft", "-f", "-"], input=rules(status), text=True, check=True)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        print(
+            "Tailscale status lookup failed; applying fail-closed inference rules.",
+            file=sys.stderr,
+        )
+        status = {}
+    subprocess.run(
+        ["nft", "-f", "-"], input=rules(status), text=True, check=True, timeout=15
+    )
 
 
 if __name__ == "__main__":

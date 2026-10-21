@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -62,6 +63,28 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.assertNotIn("100.1.2.3", rules)
         self.assertTrue(rules.rstrip().endswith("tcp dport 8080 drop"))
         self.assertIn("tcp dport 8080 drop", FIREWALL.rules({}))
+
+    def test_firewall_status_lookup_times_out_and_fails_closed(self):
+        with (
+            patch.object(
+                FIREWALL.subprocess,
+                "check_output",
+                side_effect=subprocess.TimeoutExpired(["tailscale", "status", "--json"], 15),
+            ) as status_lookup,
+            patch.object(FIREWALL.subprocess, "run") as nft_run,
+        ):
+            FIREWALL.main()
+
+        status_lookup.assert_called_once_with(["tailscale", "status", "--json"], timeout=15)
+        self.assertTrue(all(call.kwargs["timeout"] == 15 for call in nft_run.call_args_list))
+        command, options = nft_run.call_args
+        self.assertEqual(command[0], ["nft", "-f", "-"])
+        self.assertIn("tcp dport 8080 drop", options["input"])
+
+    def test_firewall_apply_has_a_state_timeout(self):
+        backend = render("mlops/backend", "mlops-node-6")
+        apply_state = options(backend, "inference-firewall-apply", "cmd.run")
+        self.assertEqual(apply_state["timeout"], 60)
 
     def test_all_inference_units_require_key_and_authenticated_warmup(self):
         for state, prefix in [

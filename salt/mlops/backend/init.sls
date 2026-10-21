@@ -106,6 +106,7 @@ inference-firewall-reload:
 inference-firewall-apply:
   cmd.run:
     - name: /usr/bin/python3 /usr/local/sbin/inference-firewall
+    - timeout: 60
     - require:
       - pkg: inference-firewall-package
       - file: inference-firewall-script
