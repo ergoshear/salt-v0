@@ -239,8 +239,19 @@ halo395_build_llama_pr24423_diffusion:
                     }"""
         if "req.contains(\"enable_thinking\")" not in code:
             code = code.replace(target, replacement, 1)
-        # Only enforce the O(N^2) fp32 scores buffer limit when Flash Attention is OFF (!fa_on)
         code = code.replace("if (budget) {", "if (budget && !fa_on) {")
+        code = code.replace(
+            "std::min(n_ctx_train, 65536) : 65536;",
+            "std::min(n_ctx_train, 131072) : 131072;"
+        )
+        code = code.replace(
+            "const int cands[] = {65536,",
+            "const int cands[] = {131072, 98304, 65536,"
+        )
+        old_stop = "if (cut < (size_t) canvas_length) break;"
+        new_stop = "if (cut < (size_t) canvas_length || answer_text.find(\"<tool_call|>\") != std::string::npos) break;"
+        if "answer_text.find(\"<tool_call|>\")" not in code:
+            code = code.replace(old_stop, new_stop, 1)
         p.write_text(code)
         PY
           if [ ! -f /opt/llama-pr24423/build/build.ninja ]; then
@@ -256,13 +267,13 @@ halo395_build_llama_pr24423_diffusion:
           cp -af /opt/llama-pr24423/build/bin/llama-diffusion* /usr/local/bin/
           cp -af /opt/llama-pr24423/build/bin/llama-diffusion* /usr/bin/
           cp -af /opt/llama-pr24423/build/bin/llama-quantize /usr/local/bin/ || true
-          touch /etc/llama-built-pr24423-visual-server-64k
+          touch /etc/llama-built-pr24423-visual-server-128k-tools
         '
     - runas: {{ user }}
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         podman start llama-vulkan-radv >/dev/null 2>&1
-        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-visual-server-64k && \
+        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-visual-server-128k-tools && \
         podman exec llama-vulkan-radv test -x /usr/local/bin/llama-diffusion-gemma-visual-server
     - timeout: 1800
     - require:
@@ -307,7 +318,7 @@ halo395_download_diffusiongemma_26b_a4b:
       - cmd: halo395_build_llama_pr24423_diffusion
 
 # ==============================================================================
-# 10. Manage OpenAI HTTP Proxy for llama-diffusion-gemma-visual-server (64K Context)
+# 10. Manage OpenAI HTTP Proxy for llama-diffusion-gemma-visual-server (128K + Tools)
 # ==============================================================================
 halo395_diffusion_openai_proxy:
   file.managed:
@@ -353,7 +364,7 @@ halo395_diffusion_openai_proxy:
                 self.lock = threading.Lock()
                 self.proc = None
                 self.n_vocab = 0
-                self.max_tok = 65536
+                self.max_tok = 131072
                 self.created = int(time.time())
                 self.start_worker()
 
@@ -361,7 +372,7 @@ halo395_diffusion_openai_proxy:
                 env = os.environ.copy()
                 env.setdefault("NGL", "999")
                 env.setdefault("FA", "1")
-                env.setdefault("MAXTOK", "65536")
+                env.setdefault("MAXTOK", "131072")
                 cmd = ["/usr/local/bin/llama-diffusion-gemma-visual-server", MODEL_PATH]
                 print(f"[proxy] Starting {' '.join(cmd)} (NGL={env['NGL']}, FA={env['FA']}, MAXTOK={env['MAXTOK']})...", flush=True)
                 self.proc = subprocess.Popen(
@@ -394,6 +405,51 @@ halo395_diffusion_openai_proxy:
 
 
         WORKER = None
+
+
+        def parse_gemma4_args_to_json(raw_args: str) -> str:
+            s = raw_args.strip()
+            if not (s.startswith("{") and s.endswith("}")):
+                return "{}"
+            def repl_str(m):
+                return json.dumps(m.group(1))
+            s = re.sub(r'<\|"\|>(.*?)<\|"\|>', repl_str, s, flags=re.DOTALL)
+            s = re.sub(r'([{\s,])([A-Za-z_][A-Za-z0-9_.-]*)\s*:', r'\1"\2":', s)
+            try:
+                json.loads(s)
+                return s
+            except Exception:
+                return json.dumps({"raw": raw_args})
+
+
+        def extract_tool_calls(text: str):
+            pattern = re.compile(r"<\|tool_call>call:([A-Za-z0-9_.-]+)(\{.*?\})<tool_call\|>", flags=re.DOTALL)
+            tool_calls = []
+            for idx, m in enumerate(pattern.finditer(text)):
+                fn_name = m.group(1)
+                fn_args = parse_gemma4_args_to_json(m.group(2))
+                tool_calls.append(
+                    {
+                        "id": f"call_dg_{int(time.time() * 1000)}_{idx}",
+                        "type": "function",
+                        "function": {
+                            "name": fn_name,
+                            "arguments": fn_args,
+                        },
+                    }
+                )
+            cleaned_text = pattern.sub("", text).strip()
+            return cleaned_text, tool_calls
+
+
+        def normalize_messages(messages: list) -> list:
+            norm = []
+            for m in messages:
+                msg = dict(m)
+                if msg.get("content") is None:
+                    msg["content"] = ""
+                norm.append(msg)
+            return norm
 
 
         def split_reasoning_and_content(raw_text: str):
@@ -467,11 +523,15 @@ halo395_diffusion_openai_proxy:
                     self.send_json(400, {"error": {"message": f"Invalid JSON: {e}", "type": "invalid_request_error"}})
                     return
 
-                messages = req.get("messages", [])
+                messages = normalize_messages(req.get("messages", []))
                 stream = bool(req.get("stream", False))
                 seed = int(req.get("seed", 0) or 0)
-                max_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens") or 2048)
-                n_blocks = max(1, min(64, math.ceil(max_tokens / CANVAS_LEN)))
+                has_tools = bool(req.get("tools"))
+                default_max_tok = 1024 if has_tools else 2048
+                max_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens") or default_max_tok)
+                n_blocks = max(1, min(128, math.ceil(max_tokens / CANVAS_LEN)))
+                if has_tools and n_blocks > 4 and "max_tokens" not in req:
+                    n_blocks = 4
                 if "n_blocks" in req:
                     n_blocks = int(req["n_blocks"])
 
@@ -490,7 +550,7 @@ halo395_diffusion_openai_proxy:
                     "enable_thinking": enable_thinking,
                     "messages": messages,
                 }
-                if "tools" in req and req["tools"]:
+                if has_tools:
                     worker_req["tools"] = req["tools"]
 
                 with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tf:
@@ -552,7 +612,7 @@ halo395_diffusion_openai_proxy:
                                 parts = line.split(" ", 2)
                                 if len(parts) == 3:
                                     committed_text = json.loads(parts[2])
-                                    if stream:
+                                    if stream and "<|tool_call>" not in committed_text:
                                         r_txt, c_txt = split_reasoning_and_content(committed_text)
                                         r_delta = r_txt[prev_r_len:]
                                         c_delta = c_txt[prev_c_len:]
@@ -616,13 +676,54 @@ halo395_diffusion_openai_proxy:
                             "total_tokens": prompt_n + predicted_n,
                         }
 
+                        reasoning_text, raw_content = split_reasoning_and_content(committed_text)
+                        final_content, tool_calls = extract_tool_calls(raw_content)
+                        finish_reason = "tool_calls" if tool_calls else "stop"
+
                         if stream:
+                            r_delta = reasoning_text[prev_r_len:]
+                            c_delta = final_content[prev_c_len:] if prev_c_len <= len(final_content) else ""
+                            if r_delta or c_delta:
+                                delta_obj = {}
+                                if r_delta:
+                                    delta_obj["reasoning_content"] = r_delta
+                                if c_delta:
+                                    delta_obj["content"] = c_delta
+                                chunk = {
+                                    "id": req_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": created_ts,
+                                    "model": MODEL_ID,
+                                    "choices": [{"index": 0, "delta": delta_obj, "finish_reason": None}],
+                                }
+                                self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode("utf-8"))
+
+                            if tool_calls:
+                                tc_deltas = []
+                                for idx, tc in enumerate(tool_calls):
+                                    tc_deltas.append(
+                                        {
+                                            "index": idx,
+                                            "id": tc["id"],
+                                            "type": "function",
+                                            "function": tc["function"],
+                                        }
+                                    )
+                                tc_chunk = {
+                                    "id": req_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": created_ts,
+                                    "model": MODEL_ID,
+                                    "choices": [{"index": 0, "delta": {"tool_calls": tc_deltas}, "finish_reason": None}],
+                                }
+                                self.wfile.write(f"data: {json.dumps(tc_chunk)}\n\n".encode("utf-8"))
+
                             end_chunk = {
                                 "id": req_id,
                                 "object": "chat.completion.chunk",
                                 "created": created_ts,
                                 "model": MODEL_ID,
-                                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                                "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
                                 "usage": usage,
                                 "timings": timings,
                             }
@@ -630,13 +731,14 @@ halo395_diffusion_openai_proxy:
                             self.wfile.flush()
                             return
 
-                        reasoning_text, final_content = split_reasoning_and_content(committed_text)
-                        if not final_content and reasoning_text:
+                        if not final_content and reasoning_text and not tool_calls:
                             final_content = reasoning_text
 
-                        msg_obj = {"role": "assistant", "content": final_content}
+                        msg_obj = {"role": "assistant", "content": final_content if final_content else None}
                         if reasoning_text:
                             msg_obj["reasoning_content"] = reasoning_text
+                        if tool_calls:
+                            msg_obj["tool_calls"] = tool_calls
 
                         resp = {
                             "id": req_id,
@@ -647,7 +749,7 @@ halo395_diffusion_openai_proxy:
                                 {
                                     "index": 0,
                                     "message": msg_obj,
-                                    "finish_reason": "stop",
+                                    "finish_reason": finish_reason,
                                 }
                             ],
                             "usage": usage,
@@ -698,7 +800,6 @@ halo395_router_systemd_unit:
         Type=simple
         Environment="HOME={{ home }}"
         Environment="PATH={{ home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-        Environment="DG_API_KEY_FILE={{ home }}/.config/llama/backend-key"
         WorkingDirectory={{ home }}
 
         ExecStartPre=/usr/bin/podman start llama-vulkan-radv
