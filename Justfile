@@ -5,6 +5,7 @@ pre-commit action:
     case {{ quote(action) }} in
         setup)
             uv tool install pre-commit
+            uv run --no-project --with-requirements tests/requirements.txt python -m unittest discover -s tests -v
             uv tool run pre-commit install
             ;;
         *)

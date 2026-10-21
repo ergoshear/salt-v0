@@ -147,6 +147,11 @@ once per clone:
 just pre-commit setup
 ```
 
+Setup runs the tests once to cache their dependencies. The hook uses uv's
+offline mode so commits do not need access to PyPI. After changing
+`tests/requirements.txt` or clearing uv's cache, run the validation command
+above while online to prepare the dependencies again.
+
 The hook always runs the full test suite, regardless of which files are staged.
 After deployment, verify the tunnel addresses,
 node readiness, cross-worker pod traffic, pod DNS, metrics, and existing
