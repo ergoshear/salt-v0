@@ -135,10 +135,20 @@ then enrolls them.
 Run configuration, policy-merge, credential isolation, and enrollment tests:
 
 ```sh
-python3 -m unittest discover -s tests -v
+uv run --no-project --with-requirements tests/requirements.txt python -m unittest discover -s tests -v
 ```
 
-Tests require Jinja2 and PyYAML. After deployment, verify the tunnel addresses,
+Test dependencies are listed in `tests/requirements.txt` and managed by uv.
+
+To install pre-commit, its test dependencies, and enable the repository hook
+once per clone:
+
+```sh
+just pre-commit setup
+```
+
+The hook always runs the full test suite, regardless of which files are staged.
+After deployment, verify the tunnel addresses,
 node readiness, cross-worker pod traffic, pod DNS, metrics, and existing
 Argo CD HTTPS ingress. Registration alone does not validate pod networking.
 Do not print API keys, auth keys, or whole pillar data during verification.

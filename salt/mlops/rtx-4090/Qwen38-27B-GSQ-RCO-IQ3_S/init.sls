@@ -25,9 +25,6 @@ rtx4090_base_packages:
       - kernel-headers
       - fedora-workstation-repositories
 
-# Glances requires the pynvml module for NVIDIA GPU telemetry. Install the
-# maintained nvidia-ml-py distribution in an isolated target directory, then
-# expose that directory to the system Python used by /usr/bin/glances.
 rtx4090_glances_nvidia_ml_python:
   pip.installed:
     - name: nvidia-ml-py
@@ -85,7 +82,6 @@ rtx4090_nvidia_packages:
       - cmd: rtx4090_rpmfusion_repos
       - cmd: rtx4090_nvidia_container_toolkit_repo
 
-# Blacklist both nouveau and Fedora 44's nova_core in GRUB & Enable DRM Modeset
 rtx4090_kernel_nvidia_args:
   cmd.run:
     - name: >
@@ -95,7 +91,6 @@ rtx4090_kernel_nvidia_args:
     - require:
       - pkg: rtx4090_nvidia_packages
 
-# Build & Load the NVIDIA Kernel Module Immediately (Since Secure Boot is Disabled)
 rtx4090_build_and_load_kmod:
   cmd.run:
     - name: |
@@ -110,7 +105,6 @@ rtx4090_build_and_load_kmod:
     - require:
       - pkg: rtx4090_nvidia_packages
 
-# Enable nvidia-persistenced so the RTX 4090 Stays Initialized & Fast on Idle
 rtx4090_nvidia_persistenced:
   service.running:
     - name: nvidia-persistenced
@@ -118,7 +112,6 @@ rtx4090_nvidia_persistenced:
     - require:
       - cmd: rtx4090_build_and_load_kmod
 
-# Generate CDI Spec (/etc/cdi/nvidia.yaml) for Rootless Podman GPU Passthrough
 rtx4090_generate_nvidia_cdi:
   cmd.run:
     - name: |
@@ -272,21 +265,10 @@ rtx4090_download_qwen38_main:
 
 rtx4090_download_qwen38_mmproj:
   cmd.run:
-    - name: |
-        mkdir -p {{ qwen38_dir }}
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF \
-          --include "*mmproj*.gguf" \
-          --local-dir {{ qwen38_dir }} || true
-        MMPROJ_FILE=$(ls -1 {{ qwen38_dir }}/*mmproj*.gguf 2>/dev/null | head -n 1 || true)
-        if [ -z "${MMPROJ_FILE}" ]; then
-          HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download unsloth/Qwen3.8-27B-GGUF \
-            --include "*mmproj*BF16*.gguf" \
-            --local-dir {{ qwen38_dir }}
-          MMPROJ_FILE=$(ls -1 {{ qwen38_dir }}/*mmproj*.gguf | head -n 1)
-        fi
-        if [ "${MMPROJ_FILE}" != "{{ qwen38_dir }}/mmproj-Qwen3.8-27B-BF16.gguf" ]; then
-          ln -sf "${MMPROJ_FILE}" {{ qwen38_dir }}/mmproj-Qwen3.8-27B-BF16.gguf
-        fi
+    - name: >
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF
+        mmproj-Qwen3.8-27B-BF16.gguf
+        --local-dir {{ qwen38_dir }}
     - runas: {{ user }}
     - creates: {{ qwen38_dir }}/mmproj-Qwen3.8-27B-BF16.gguf
     - timeout: 1800
@@ -338,7 +320,7 @@ rtx4090_models_preset_ini:
         jinja = true
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 131072
@@ -357,7 +339,7 @@ rtx4090_models_preset_ini:
         jinja = true
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = mtp
+        spec-type = draft-mtp
         cache-type-k = q8_0
         cache-type-v = q4_0
         ctx-size = 262144

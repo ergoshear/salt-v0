@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: salt-configuration-tests
+        name: Salt configuration tests
+        entry: uv run --no-project --with-requirements tests/requirements.txt python -m unittest discover -s tests -v
+        language: system
+        pass_filenames: false
+        always_run: true
