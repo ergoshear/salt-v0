@@ -2,23 +2,22 @@
 
 ## GitHub Actions test and apply
 
-The [test workflow](.github/workflows/salt-test.yml) runs configuration tests
+The [Salt workflow](.github/workflows/salt.yml) runs configuration tests
 on a GitHub-hosted runner, then a local `salt.master` dry run on the
 `self-hosted`, `salt-master-01` runner, checking out `main` for both the dry
 run and apply so the master's configured file roots receive the main checkout.
-Only after success does it call the
-[apply workflow](.github/workflows/salt-apply.yml), explicitly forwarding
-the required `TS_API_KEY`, `LITELLM_BACKEND_KEY`, and
-`HUGGING_FACE_ACCESS_KEY` GitHub Actions secrets. The apply writes model
+Only after success does it apply the highstate using the required
+`TS_API_KEY`, `LITELLM_BACKEND_KEY`, and `HUGGING_FACE_ACCESS_KEY` GitHub
+Actions secrets. Manual dispatch runs the dry-run gate by default; enable
+`skip_dry_run` only for a direct recovery apply. The apply writes model
 credentials as private, master-owned file-tree pillars for only
 `mlops-node-4`, `mlops-node-6`, `mlops-node-7`, and `mlops-node-9`, checks that
 the compiled pillars are scoped to those hosts, and applies the backend and
 Hugging Face states on those minions. The secrets are never committed or
-printed. A manual apply skips the
-dry-run gate. The push workflow serializes runs against the shared checkout.
+printed. The workflow serializes runs against the shared checkout.
 
 The runner needs Salt, Python 3, and passwordless sudo for the workflow
-commands. The apply workflow writes the API key to
+commands. The workflow writes the API key to
 `/etc/salt/tailscale/api-key` inside a root-only directory without logging it,
 bootstraps `salt.master`, and then **targets remote minions**: Tailscale on
 all accepted minions, followed by the Kubernetes server and two workers.

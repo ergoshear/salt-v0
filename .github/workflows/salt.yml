@@ -1,22 +1,65 @@
-name: Salt highstate apply
+name: Salt test and apply
 
 on:
-  workflow_call:
-    secrets:
-      TS_API_KEY:
-        required: true
-      LITELLM_BACKEND_KEY:
-        required: true
-      HUGGING_FACE_ACCESS_KEY:
-        required: true
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      skip_dry_run:
+        description: Apply directly without the Salt test-mode gate
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: salt-master-01
+  cancel-in-progress: false
+
 jobs:
+  configuration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install Jinja2 PyYAML
+      - run: python -m unittest discover -s tests -v
+
+  salt-test:
+    if: github.event_name != 'pull_request' && inputs.skip_dry_run != true
+    needs: configuration-tests
+    name: Test local highstate
+    runs-on: [self-hosted, salt-master-01]
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Run Salt in test mode
+        run: |
+          sudo -n salt-call --local \
+            --file-root="$GITHUB_WORKSPACE/salt" \
+            --pillar-root="$GITHUB_WORKSPACE/pillar" \
+            state.apply salt.master test=True queue=True --retcode-passthrough
+
   salt-apply:
     name: Apply local highstate
+    needs: [configuration-tests, salt-test]
+    if: >-
+      always() && github.event_name != 'pull_request' &&
+      needs.configuration-tests.result == 'success' &&
+      (needs.salt-test.result == 'success' || inputs.skip_dry_run == true)
     runs-on: [self-hosted, salt-master-01]
     timeout-minutes: 30
     steps:
