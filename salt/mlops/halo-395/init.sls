@@ -238,27 +238,32 @@ halo395_build_llama_pr24423_diffusion:
                         inputs.enable_thinking = req.at("enable_thinking").get<bool>();
                     }"""
         if "req.contains(\"enable_thinking\")" not in code:
-            p.write_text(code.replace(target, replacement, 1))
+            code = code.replace(target, replacement, 1)
+        # Only enforce the O(N^2) fp32 scores buffer limit when Flash Attention is OFF (!fa_on)
+        code = code.replace("if (budget) {", "if (budget && !fa_on) {")
+        p.write_text(code)
         PY
-          rm -rf /opt/llama-pr24423/build
-          cmake -B /opt/llama-pr24423/build -S /opt/llama-pr24423 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=ON \
-            -DGGML_VULKAN=ON \
-            -DGGML_NATIVE=ON
+          if [ ! -f /opt/llama-pr24423/build/build.ninja ]; then
+            cmake -B /opt/llama-pr24423/build -S /opt/llama-pr24423 -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DLLAMA_BUILD_EXAMPLES=ON \
+              -DGGML_VULKAN=ON \
+              -DGGML_NATIVE=ON
+          fi
           cmake --build /opt/llama-pr24423/build --config Release -j $(nproc) \
             --target llama-diffusion-cli llama-diffusion-gemma-server llama-diffusion-gemma-visual-server llama-quantize
-          cp -af /opt/llama-pr24423/build/bin/llama-* /usr/local/bin/
-          cp -af /opt/llama-pr24423/build/bin/llama-* /usr/bin/
-          touch /etc/llama-built-pr24423-visual-server
+          cp -af /opt/llama-pr24423/build/bin/llama-diffusion* /usr/local/bin/
+          cp -af /opt/llama-pr24423/build/bin/llama-diffusion* /usr/bin/
+          cp -af /opt/llama-pr24423/build/bin/llama-quantize /usr/local/bin/ || true
+          touch /etc/llama-built-pr24423-visual-server-64k
         '
     - runas: {{ user }}
     - unless: |
         export XDG_RUNTIME_DIR="/run/user/$(id -u {{ user }})"
         podman start llama-vulkan-radv >/dev/null 2>&1
-        podman exec llama-vulkan-radv test -x /usr/local/bin/llama-diffusion-gemma-visual-server && \
-        podman exec llama-vulkan-radv grep -q 'req.contains("enable_thinking")' /opt/llama-pr24423/examples/diffusion-gemma-server/diffusion-gemma-visual-server.cpp
+        podman exec llama-vulkan-radv test -f /etc/llama-built-pr24423-visual-server-64k && \
+        podman exec llama-vulkan-radv test -x /usr/local/bin/llama-diffusion-gemma-visual-server
     - timeout: 1800
     - require:
       - cmd: halo395_create_vulkan_toolbox
@@ -302,7 +307,7 @@ halo395_download_diffusiongemma_26b_a4b:
       - cmd: halo395_build_llama_pr24423_diffusion
 
 # ==============================================================================
-# 10. Manage OpenAI HTTP Proxy for llama-diffusion-gemma-visual-server
+# 10. Manage OpenAI HTTP Proxy for llama-diffusion-gemma-visual-server (64K Context)
 # ==============================================================================
 halo395_diffusion_openai_proxy:
   file.managed:
@@ -348,7 +353,7 @@ halo395_diffusion_openai_proxy:
                 self.lock = threading.Lock()
                 self.proc = None
                 self.n_vocab = 0
-                self.max_tok = 32768
+                self.max_tok = 65536
                 self.created = int(time.time())
                 self.start_worker()
 
@@ -356,7 +361,7 @@ halo395_diffusion_openai_proxy:
                 env = os.environ.copy()
                 env.setdefault("NGL", "999")
                 env.setdefault("FA", "1")
-                env.setdefault("MAXTOK", "16384")
+                env.setdefault("MAXTOK", "65536")
                 cmd = ["/usr/local/bin/llama-diffusion-gemma-visual-server", MODEL_PATH]
                 print(f"[proxy] Starting {' '.join(cmd)} (NGL={env['NGL']}, FA={env['FA']}, MAXTOK={env['MAXTOK']})...", flush=True)
                 self.proc = subprocess.Popen(
@@ -439,7 +444,7 @@ halo395_diffusion_openai_proxy:
                                     "object": "model",
                                     "created": WORKER.created,
                                     "owned_by": "llamacpp-diffusion",
-                                    "status": {"value": "loaded"},
+                                    "status": {"value": "loaded", "max_tokens": WORKER.max_tok},
                                 }
                             ],
                         },
@@ -465,8 +470,8 @@ halo395_diffusion_openai_proxy:
                 messages = req.get("messages", [])
                 stream = bool(req.get("stream", False))
                 seed = int(req.get("seed", 0) or 0)
-                max_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens") or 1024)
-                n_blocks = max(1, min(16, math.ceil(max_tokens / CANVAS_LEN)))
+                max_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens") or 2048)
+                n_blocks = max(1, min(64, math.ceil(max_tokens / CANVAS_LEN)))
                 if "n_blocks" in req:
                     n_blocks = int(req["n_blocks"])
 
@@ -696,6 +701,7 @@ halo395_router_systemd_unit:
         WorkingDirectory={{ home }}
 
         ExecStartPre=/usr/bin/podman start llama-vulkan-radv
+        ExecStartPre=-/usr/bin/podman exec llama-vulkan-radv pkill -9 -f llama-server
 
         ExecStart=/usr/bin/toolbox run --container llama-vulkan-radv \
           /usr/bin/python3 {{ home }}/.local/bin/diffusion-openai-proxy.py
