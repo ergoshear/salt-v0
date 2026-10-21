@@ -18,7 +18,7 @@ base:
   'mlops-node-5':
     - mlops.storage
   'mlops-node-6':
-    - mlops.rtx-4090
+    - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
   'mlops-node-7':
     - mlops.halo-395
   'mlops-node-9':
