@@ -4,7 +4,7 @@ include:
   - mlops.backend
   - mlops.huggingface
 {% set qwen36_dir = home ~ '/models/Qwen3.6-35B-A3B-MTP-GGUF' %}
-{% set qwen38_dir = home ~ '/models/Qwen3.8-27B-GSQ-RCO-GGUF' %}
+{% set ornith_dir = home ~ '/models/Ornith-1.5-35B-A3B-GGUF' %}
 
 # ==============================================================================
 # 1. Base Packages & System Dependencies (Fedora 44)
@@ -241,7 +241,7 @@ halo495_build_upstream_llama_server:
       - cmd: halo495_create_vulkan_toolbox
 
 # ==============================================================================
-# 9. Download Qwen3.6-35B-A3B (+ DFlash) & Qwen3.8-27B-GSQ-RCO (IQ3_S-mtp + Vision)
+# 9. Download Slot 1: Qwen3.6-35B-A3B (+ DFlash) & Slot 2: Ornith-1.5-35B-A3B (+ DFlash & Vision)
 # ==============================================================================
 halo495_download_qwen36_35b_a3b:
   cmd.run:
@@ -278,45 +278,46 @@ halo495_download_qwen36_sharp_template:
     - require:
       - cmd: halo495_install_hf_cli
 
-halo495_download_qwen38_gsq_rco_main:
+halo495_download_ornith_main:
   cmd.run:
     - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF
-        Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
-        --local-dir {{ qwen38_dir }}
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download bartowski/Ornith-1.5-35B-A3B-GGUF
+        Ornith-1.5-35B-A3B-Q3_K_XL.gguf
+        --local-dir {{ ornith_dir }}
     - runas: {{ user }}
-    - creates: {{ qwen38_dir }}/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
+    - creates: {{ ornith_dir }}/Ornith-1.5-35B-A3B-Q3_K_XL.gguf
     - timeout: 3600
     - require:
       - cmd: halo495_install_hf_cli
 
-halo495_download_qwen38_gsq_rco_mmproj:
+halo495_download_ornith_dflash:
   cmd.run:
     - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF
-        mmproj-Qwen3.8-27B-BF16.gguf
-        --local-dir {{ qwen38_dir }}
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download na0x2c6/Ornith-1.5-35B-A3B-DFlash-GGUF
+        Ornith-1.5-35B-A3B-DFlash-Q8_0.gguf
+        --local-dir {{ ornith_dir }}
     - runas: {{ user }}
-    - creates: {{ qwen38_dir }}/mmproj-Qwen3.8-27B-BF16.gguf
+    - creates: {{ ornith_dir }}/Ornith-1.5-35B-A3B-DFlash-Q8_0.gguf
     - timeout: 1800
     - require:
       - cmd: halo495_install_hf_cli
 
-halo495_download_qwen38_sharp_template:
+halo495_download_ornith_mmproj:
   cmd.run:
     - name: >
-        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download peculiar-ragdoll/Qwen-Sharp-Chat-Templates
-        chat_template.jinja
-        --local-dir {{ qwen38_dir }}
+        HF_XET_HIGH_PERFORMANCE=1 {{ home }}/.local/bin/hf download bartowski/Ornith-1.5-35B-A3B-GGUF
+        mmproj-Ornith-1.5-35B-A3B-bf16.gguf
+        --local-dir {{ ornith_dir }}
     - runas: {{ user }}
-    - creates: {{ qwen38_dir }}/chat_template.jinja
+    - creates: {{ ornith_dir }}/mmproj-Ornith-1.5-35B-A3B-bf16.gguf
+    - timeout: 1800
     - require:
       - cmd: halo495_install_hf_cli
 
 # ==============================================================================
-# 10. Manage ~/models/models.ini (2 Consolidated Resident Slots = 0s Swap!)
+# 10. Manage ~/models/models.ini (2 Consolidated Resident MoE Slots = 80+ tok/s & 0s Swap!)
 #     Slot 1: Qwen3.6-35B-A3B-DFlash-512K (524,288 context window + 16-tok DFlash)
-#     Slot 2: Qwen3.8-27B (GSQ-RCO-IQ3_S-mtp + 262,144 context + draft-mtp + Vision)
+#     Slot 2: Ornith-1.5-35B-A3B-DFlash (262,144 context window + 16-tok DFlash + Vision)
 # ==============================================================================
 halo495_models_preset_ini:
   file.managed:
@@ -354,34 +355,37 @@ halo495_models_preset_ini:
         top-p = 0.95
         top-k = 20
 
-        [Qwen3.8-27B]
-        model = {{ qwen38_dir }}/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
-        mmproj = {{ qwen38_dir }}/mmproj-Qwen3.8-27B-BF16.gguf
+        [Ornith-1.5-35B-A3B-DFlash]
+        model = {{ ornith_dir }}/Ornith-1.5-35B-A3B-Q3_K_XL.gguf
+        model-draft = {{ ornith_dir }}/Ornith-1.5-35B-A3B-DFlash-Q8_0.gguf
+        mmproj = {{ ornith_dir }}/mmproj-Ornith-1.5-35B-A3B-bf16.gguf
         fit = off
         n-gpu-layers = 999
+        n-gpu-layers-draft = 999
         load-mode = none
         flash-attn = 1
         jinja = true
-        chat-template-file = {{ qwen38_dir }}/chat_template.jinja
         no-reasoning-preserve = true
         parallel = 1
-        spec-type = draft-mtp
+        spec-type = draft-dflash
+        spec-draft-n-max = 16
+        spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
         ubatch-size = 2048
         batch-size = 4096
         threads = 16
-        temp = 0.7
-        top-p = 0.8
+        temp = 0.6
+        top-p = 0.95
         top-k = 20
     - require:
       - cmd: halo495_download_qwen36_35b_a3b
       - cmd: halo495_download_qwen36_35b_dflash_drafter
       - cmd: halo495_download_qwen36_sharp_template
-      - cmd: halo495_download_qwen38_gsq_rco_main
-      - cmd: halo495_download_qwen38_gsq_rco_mmproj
-      - cmd: halo495_download_qwen38_sharp_template
+      - cmd: halo495_download_ornith_main
+      - cmd: halo495_download_ornith_dflash
+      - cmd: halo495_download_ornith_mmproj
 
 # ==============================================================================
 # 11. Systemd User Service: strix-llama-router.service (--models-max 2 Resident)
@@ -404,7 +408,7 @@ halo495_router_systemd_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=Strix Halo 192GB llama-server Router (--models-max 2 Zero-Swap Resident Mode)
+        Description=Strix Halo 192GB llama-server Router (--models-max 2 Dual MoE Zero-Swap Mode)
         After=network-online.target
         Wants=network-online.target
 
@@ -429,9 +433,9 @@ halo495_router_systemd_unit:
           --host 0.0.0.0 \
           --port 8080
 
-        # Pre-warm both resident models into 192GB LPDDR5X on startup (stop on <think> so it finishes in <1s)
+        # Pre-warm both resident MoE models into 192GB LPDDR5X on startup
         ExecStartPost=-/usr/bin/bash -c 'sleep 3 && \
-          for m in "Qwen3.6-35B-A3B-DFlash-512K" "Qwen3.8-27B"; do \
+          for m in "Qwen3.6-35B-A3B-DFlash-512K" "Ornith-1.5-35B-A3B-DFlash"; do \
             curl -s http://127.0.0.1:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
               --header @{{ home }}/.config/llama/auth-header \
