@@ -363,6 +363,8 @@ halo395_router_systemd_unit:
           --port 8080 \
           --api-key-file {{ home }}/.config/llama/backend-key
 
+        ExecStartPost=-/usr/bin/bash -c 'sleep 3 && curl -s http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" --header @/home/mlops/.config/llama/auth-header -d "{\"model\":\"Qwen3.6-35B-A3B-DFlash\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"max_tokens\":1,\"stop\":[\"<think>\",\"\\n\"]}" >/dev/null 2>&1 &'
+
         ExecStop=/usr/bin/podman stop -t 10 llama-vulkan-radv
         Restart=on-failure
         RestartSec=10
