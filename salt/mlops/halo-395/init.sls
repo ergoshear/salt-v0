@@ -698,6 +698,7 @@ halo395_router_systemd_unit:
         Type=simple
         Environment="HOME={{ home }}"
         Environment="PATH={{ home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+        Environment="DG_API_KEY_FILE={{ home }}/.config/llama/backend-key"
         WorkingDirectory={{ home }}
 
         ExecStartPre=/usr/bin/podman start llama-vulkan-radv

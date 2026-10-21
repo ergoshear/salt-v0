@@ -70,7 +70,17 @@ class SecurityBoundaryTests(unittest.TestCase):
         ]:
             rendered = render("mlops/" + state, "mlops-node-7")
             unit = options(rendered, prefix + "_router_systemd_unit", "file.managed")
-            self.assertIn("--api-key-file /home/mlops/.config/llama/backend-key", unit["contents"])
+            if state == "halo-395":
+                # The DiffusionGemma proxy reads its API key from this file.
+                self.assertIn(
+                    'DG_API_KEY_FILE=/home/mlops/.config/llama/backend-key',
+                    unit["contents"],
+                )
+            else:
+                self.assertIn(
+                    "--api-key-file /home/mlops/.config/llama/backend-key",
+                    unit["contents"],
+                )
             self.assertIn({"cmd": "inference-backend-header"}, unit["require"])
             if "curl -s" in unit["contents"]:
                 self.assertIn("--header @/home/mlops/.config/llama/auth-header", unit["contents"])
