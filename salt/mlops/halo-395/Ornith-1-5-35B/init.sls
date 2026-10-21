@@ -297,7 +297,6 @@ halo395_models_preset_ini:
         n-gpu-layers = 999
         n-gpu-layers-draft = 999
         flash-attn = 1
-        no-mmap = true
         jinja = true
         no-reasoning-preserve = true
         parallel = 1
@@ -348,10 +347,11 @@ halo395_router_systemd_unit:
         Environment="HOME={{ home }}"
         Environment="PATH={{ home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
         Environment="GGML_VK_MAX_MB_PER_SUBMIT=2048"
+        Environment="LLAMA_ARG_MMAP=0"
         WorkingDirectory={{ home }}
 
         ExecStartPre=/usr/bin/podman start llama-vulkan-radv
-        ExecStartPre=-/usr/bin/podman exec llama-vulkan-radv pkill -9 -f llama-
+        ExecStartPre=-/usr/bin/podman exec --user 0 llama-vulkan-radv pkill -9 -x llama-server
 
         ExecStart=/usr/bin/toolbox run --container llama-vulkan-radv \
           /usr/local/bin/llama-server \
