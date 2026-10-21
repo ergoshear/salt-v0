@@ -151,6 +151,29 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(PROVISION.merge_policy(copy.deepcopy(merged)), merged)
 
 class ConfigurationTests(unittest.TestCase):
+    def test_gpu_state_workflow_queues_state_runs(self):
+        workflow = yaml.safe_load(
+            (ROOT / ".github/workflows/salt.yml").read_text()
+        )
+        steps = workflow["jobs"]["salt-apply"]["steps"]
+        commands = {
+            step["name"]: step["run"]
+            for step in steps
+            if step.get("name") in {
+                "Apply inference backend state to GPU minions",
+                "Install Hugging Face credentials on model downloaders",
+            }
+        }
+
+        self.assertIn(
+            "state.apply mlops.backend queue=True",
+            commands["Apply inference backend state to GPU minions"],
+        )
+        self.assertIn(
+            "state.apply mlops.huggingface queue=True",
+            commands["Install Hugging Face credentials on model downloaders"],
+        )
+
     def test_all_salt_states_compile_to_valid_state_data(self):
         variants = {
             "k3s/agent/init.sls": [

@@ -151,10 +151,10 @@ jobs:
             python3 -c 'import json,sys; d=json.load(sys.stdin); assert "INFERENCE_BACKEND_KEY" not in d and "HUGGING_FACE_ACCESS_KEY" not in d, "Model credential pillar leaked to unauthorized minion"; print("Model credential pillars absent from non-GPU minion")'
 
       - name: Apply inference backend state to GPU minions
-        run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend
+        run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend queue=True
 
       - name: Install Hugging Face credentials on model downloaders
-        run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface
+        run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface queue=True
 
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"
