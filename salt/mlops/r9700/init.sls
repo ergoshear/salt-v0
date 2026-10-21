@@ -321,116 +321,29 @@ r9700_models_preset_ini:
     - mode: '0644'
     - makedirs: True
     - contents: |
-        [Gemma-4-31B-QAT-Vision]
-        model = {{ gemma4_dir }}/gemma-4-31B-it-qat-UD-Q4_K_XL.gguf
-        model-draft = {{ gemma4_dir }}/gemma-4-31B-it-DFlash-Q4_K_M.gguf
-        mmproj = {{ gemma4_dir }}/mmproj-BF16.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        reasoning = on
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-dflash
-        spec-draft-n-max = 4
-        spec-draft-p-min = 0.75
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 262144
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 1.0
-        top-p = 0.95
-        top-k = 64
-
-        [Gemma-4-31B-QAT-NoThink]
-        model = {{ gemma4_dir }}/gemma-4-31B-it-qat-UD-Q4_K_XL.gguf
-        model-draft = {{ gemma4_dir }}/gemma-4-31B-it-DFlash-Q4_K_M.gguf
-        mmproj = {{ gemma4_dir }}/mmproj-BF16.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        reasoning = off
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-dflash
-        spec-draft-n-max = 4
-        spec-draft-p-min = 0.75
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 262144
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 0.7
-        top-p = 0.90
-        top-k = 64
-
-        [Qwen3.6-35B-A3B-DFlash-Low]
+        [Qwen3.6-35B-A3B-DFlash]
         model = {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
         model-draft = {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
         fit = off
         n-gpu-layers = 999
         n-gpu-layers-draft = 999
-        load-mode = none
         flash-attn = 1
         jinja = true
         chat-template-file = {{ qwen36_dir }}/chat_template.jinja
-        chat-template-kwargs = {"reasoning_effort":"low"}
         no-reasoning-preserve = true
         parallel = 1
         spec-type = draft-dflash
-        spec-draft-n-max = 7
+        spec-draft-n-max = 16
         spec-draft-p-min = 0.75
         cache-type-k = q8_0
         cache-type-v = q8_0
         ctx-size = 262144
-        ubatch-size = 1024
+        ubatch-size = 2048
         batch-size = 4096
-        threads = 8
+        threads = 16
         temp = 0.6
         top-p = 0.95
         top-k = 20
-
-        [Qwen3.6-35B-A3B-DFlash-NoThink]
-        model = {{ qwen36_dir }}/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
-        model-draft = {{ qwen36_dir }}/Qwen3.6-35B-A3B-DFlash-Q4_K_M.gguf
-        fit = off
-        n-gpu-layers = 999
-        n-gpu-layers-draft = 999
-        load-mode = none
-        flash-attn = 1
-        jinja = true
-        chat-template-file = {{ qwen36_dir }}/chat_template.jinja
-        reasoning = off
-        no-reasoning-preserve = true
-        parallel = 1
-        spec-type = draft-dflash
-        spec-draft-n-max = 7
-        spec-draft-p-min = 0.75
-        cache-type-k = q8_0
-        cache-type-v = q8_0
-        ctx-size = 262144
-        ubatch-size = 1024
-        batch-size = 4096
-        threads = 8
-        temp = 0.6
-        top-p = 0.80
-        top-k = 20
-    - require:
-      - cmd: r9700_download_gemma4_31b_qat
-      - cmd: r9700_download_gemma4_31b_mmproj
-      - cmd: r9700_download_gemma4_31b_dflash_drafter
-      - cmd: r9700_download_qwen36_35b_a3b
-      - cmd: r9700_download_qwen36_35b_dflash_drafter
-      - cmd: r9700_download_sharp_template
 
 # ==============================================================================
 # 11. Systemd User Service: r9700-llama-router.service (Split Start & Restart)
