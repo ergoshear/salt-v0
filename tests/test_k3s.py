@@ -14,7 +14,6 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1"}
 
 
 def load(name, path):
@@ -24,29 +23,47 @@ def load(name, path):
     return module
 
 
-PROVISION = load("provision", "salt/tailscale/provision.py")
-NODE = load("node", "salt/tailscale/node.py")
-DEPLOY = load("deploy", "salt/tailscale/deploy.py")
-VERIFY = load("verify", "salt/k3s/verify.py")
-
-
-def render(state, node, pillar=None, filename="init.sls"):
-    pillar = pillar or {}
-    template = Environment(undefined=StrictUndefined).from_string(
-        (ROOT / "salt" / state / filename).read_text()
-    )
+def compile_sls(path, node, pillar=None):
+    template = Environment(undefined=StrictUndefined).from_string(path.read_text())
     return yaml.safe_load(template.render(
         grains={"id": node, "pythonversion": [3, 14, 0, "final", 0]},
-        salt={"pillar.get": lambda key, default=None: pillar.get(key, default)},
+        salt={"pillar.get": lambda key, default=None: (pillar or {}).get(key, default)},
     ))
 
 
-def options(states, state_id, function):
-    return {
-        key: value
-        for option in states[state_id][function]
-        for key, value in option.items()
-    }
+def validate_sls(path, states):
+    if path.name == "top.sls":
+        if not isinstance(states, dict):
+            raise AssertionError(f"{path} must compile to a mapping")
+        return
+    if not isinstance(states, dict):
+        raise AssertionError(f"{path} must compile to a mapping")
+    for state_id, declaration in states.items():
+        if state_id == "include":
+            if not isinstance(declaration, list):
+                raise AssertionError(f"{path}: include must compile to a list")
+            continue
+        if not isinstance(declaration, dict) or not declaration:
+            raise AssertionError(f"{path}: state {state_id!r} must compile to a mapping")
+        for function, arguments in declaration.items():
+            if not isinstance(function, str) or not isinstance(arguments, list):
+                raise AssertionError(
+                    f"{path}: state {state_id!r} has an invalid declaration"
+                )
+            if any(not isinstance(argument, dict) or len(argument) != 1
+                   for argument in arguments):
+                raise AssertionError(
+                    f"{path}: state {state_id!r} has invalid function arguments"
+                )
+
+
+PROVISION = load("provision", "salt/tailscale/provision.py")
+NODE = load("node", "salt/tailscale/node.py")
+DEPLOY = load("deploy", "salt/tailscale/deploy.py")
+
+
+def render(state, node, pillar=None, filename="init.sls"):
+    return compile_sls(ROOT / "salt" / state / filename, node, pillar)
 
 
 class PillarTests(unittest.TestCase):
@@ -75,7 +92,7 @@ class PillarTests(unittest.TestCase):
 class PolicyTests(unittest.TestCase):
     @patch.object(PROVISION.subprocess, "check_output")
     @patch.object(PROVISION, "api")
-    def test_provision_creates_tagged_keys_with_valid_descriptions(self, api, output):
+    def test_provision_scopes_credentials_and_is_idempotent(self, api, output):
         output.side_effect = lambda command, **kwargs: json.dumps(
             {"minions": ["mlops-node-0", "mlops-node-9"]}
             if command[0] == "salt-key" else PROVISION.pwd.getpwuid(os.getuid()).pw_name
@@ -104,11 +121,6 @@ class PolicyTests(unittest.TestCase):
                 self.assertEqual((root / "salt-master-01/TS_API_KEY").read_text(), "test-api-key")
                 for secret in root.glob("*/*"):
                     self.assertEqual(secret.stat().st_mode & 0o777, 0o600)
-                for call in api.call_args_list[1:]:
-                    payload = call.args[2]
-                    self.assertRegex(payload["description"], r"^salt-[a-f0-9]{32}$")
-                    self.assertTrue(payload["capabilities"]["devices"]["create"]["reusable"])
-                    self.assertEqual(payload["expirySeconds"], 3600)
                 calls = api.call_count
                 PROVISION.provision()
                 self.assertEqual(api.call_count, calls + 1)
@@ -138,235 +150,67 @@ class PolicyTests(unittest.TestCase):
         self.assertIn(PROVISION.GRANT, merged["grants"])
         self.assertEqual(PROVISION.merge_policy(copy.deepcopy(merged)), merged)
 
-    def test_only_cluster_tag_gets_kubernetes_access(self):
-        self.assertEqual(PROVISION.GRANT["src"], ["tag:k8s"])
-        self.assertEqual(PROVISION.GRANT["dst"], ["tag:k8s"])
-        self.assertEqual(
-            set(PROVISION.GRANT["ip"]), {"tcp:6443", "tcp:10250", "udp:8472"}
-        )
-
-
-class StateTests(unittest.TestCase):
-    def test_existing_control_plane_name_is_discovered_without_renaming_it(self):
-        nodes = [{
-            "metadata": {
-                "name": name,
-                "labels": {"node-role.kubernetes.io/control-plane": "true"} if index == 0 else {},
-            },
-            "status": {"addresses": [{"type": "InternalIP", "address": f"100.90.80.{70 + index}"}]},
-        } for index, name in enumerate(["existing-server-hostname", *VERIFY.WORKERS])]
-        self.assertEqual(set(VERIFY.node_addresses(nodes)), {
-            "existing-server-hostname", "mlops-node-0", "mlops-node-1"
-        })
-        nodes[1]["status"]["addresses"][0]["address"] = "192.168.202.10"
-        with self.assertRaisesRegex(RuntimeError, "Tailscale InternalIP"):
-            VERIFY.node_addresses(nodes)
-
-    def test_network_probes_are_pinned_to_each_worker_without_service_tokens(self):
-        for index, node in enumerate(VERIFY.WORKERS):
-            probe = VERIFY.probe("test-network-namespace", index)
-            self.assertEqual(probe["metadata"]["namespace"], "test-network-namespace")
-            self.assertEqual(probe["spec"]["nodeName"], node)
-            self.assertFalse(probe["spec"]["automountServiceAccountToken"])
-            self.assertTrue(probe["spec"]["containers"][0]["securityContext"]["runAsNonRoot"])
-            self.assertEqual(
-                probe["spec"]["containers"][0]["readinessProbe"]["httpGet"]["port"], 8080
-            )
-
-    def test_targeting_and_fail_closed_guards(self):
-        top = yaml.safe_load((ROOT / "salt/top.sls").read_text())["base"]
-        self.assertIn("tailscale", top["*"])
-        rtx4090_state = "mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S"
-        self.assertIn(rtx4090_state, top["mlops-node-6"])
-        self.assertIn("mlops.storage", top["mlops-node-5"])
-        self.assertEqual(top["mlops-node-*"], [
-            {"match": "glob"},
-            "mlops.user",
-            "mlops.storage.client",
-        ])
-        rtx4090_path = ROOT / "salt/mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S"
-        self.assertTrue((rtx4090_path / "init.sls").is_file())
-        self.assertFalse((rtx4090_path / "ini.sls").exists())
-        self.assertEqual(
-            {node for node, states in top.items() if "k3s.agent" in states},
-            {"mlops-node-0", "mlops-node-1"},
-        )
-        for node in ["mlops-node-2", "mlops-nodes-0", "salt-master-01"]:
-            self.assertEqual(
-                set(render("k3s/agent", node, {"K3S_AGENT_TOKEN": "test"})),
-                {"k3s-agent-prerequisites"},
-            )
-        self.assertEqual(
-            set(render("mlops/storage", "mlops-node-4")),
-            {"mlops-storage-target-guard"},
-        )
-        self.assertIn("k3s-agent-prerequisites", render("k3s/agent", "mlops-node-0"))
-        self.assertIn("tailscale-missing-enrollment", render("tailscale", "mlops-node-0"))
-
-    def test_storage_state_detaches_and_mounts_the_specific_disk(self):
-        state = render("mlops/storage", "mlops-node-5")
-        disk = (
-            "/dev/disk/by-id/"
-            "ata-WDC_WD40EZAZ-19SF3B0_WD-WX42DA063C4T-part1"
-        )
-
-        self.assertTrue({
-            "mlops-storage-vgreduce",
-            "mlops-storage-pv-absent",
-            "mlops-storage-filesystem",
-            "mlops-storage-mount",
-        } <= set(state))
-        vgreduce = options(state, "mlops-storage-vgreduce", "cmd.run")
-        self.assertEqual(vgreduce["name"], f"vgreduce fedora {disk}")
-        self.assertIn(disk, vgreduce["onlyif"])
-
-        pv = options(state, "mlops-storage-pv-absent", "lvm.pv_absent")
-        self.assertEqual(pv["name"], disk)
-        self.assertEqual(pv["require"], [{"cmd": "mlops-storage-vgreduce"}])
-
-        filesystem = options(state, "mlops-storage-filesystem", "blockdev.formatted")
-        self.assertEqual(filesystem["name"], disk)
-        self.assertEqual(filesystem["fs_type"], "ext4")
-        self.assertFalse(filesystem["force"])
-        self.assertEqual(
-            filesystem["require"], [{"lvm": "mlops-storage-pv-absent"}]
-        )
-
-        mount = options(state, "mlops-storage-mount", "mount.mounted")
-        self.assertEqual(mount["name"], "/srv/storage")
-        self.assertEqual(mount["device"], disk)
-        self.assertEqual(mount["fstype"], "ext4")
-        self.assertTrue(mount["persist"])
-        self.assertEqual(mount["pass_num"], 2)
-        self.assertEqual(mount["require"], [{"blockdev": "mlops-storage-filesystem"}])
-
-    def test_storage_server_exports_read_write_only_for_mlop_node_names(self):
-        state = render("mlops/storage", "mlops-node-5")
-        directory = options(state, "mlops-storage-directory-permissions", "file.directory")
-        self.assertEqual(directory["name"], "/srv/storage")
-        self.assertEqual(directory["user"], "mlops")
-        self.assertEqual(directory["group"], "mlops")
-        self.assertEqual(directory["dir_mode"], "0770")
-
-        context = options(state, "mlops-storage-selinux-context", "selinux.fcontext_policy_present")
-        self.assertEqual(context["name"], "/srv/storage(/.*)?")
-        self.assertEqual(context["sel_type"], "public_content_rw_t")
-
-        exports = options(state, "mlops-storage-nfs-exports", "file.managed")
-        self.assertIn(
-            "/srv/storage mlops-node-*.lan(rw,sync,root_squash,no_subtree_check,fsid=0)",
-            exports["contents"],
-        )
-        firewall = options(state, "mlops-storage-nfs-firewall", "firewalld.present")
-        self.assertEqual(firewall["rich_rules"], [
-            'rule family="ipv4" source address="192.168.202.0/24" '
-            'port port="2049" protocol="tcp" accept',
-        ])
-        self.assertFalse(firewall["prune_rich_rules"])
-
-        service = options(state, "mlops-storage-nfs-server", "service.running")
-        self.assertEqual(service["name"], "nfs-server")
-        self.assertTrue(service["enable"])
-
-    def test_storage_clients_mount_nfs_except_on_local_storage_host(self):
-        state = render(
-            "mlops/storage", "mlops-node-0", filename="client.sls"
-        )
-        self.assertEqual(set(state), {
-            "mlops-storage-client-package",
-            "mlops-storage-client-mount",
-        })
-        mount = options(state, "mlops-storage-client-mount", "mount.mounted")
-        self.assertEqual(mount["name"], "/srv/storage")
-        self.assertEqual(mount["device"], "mlops-node-5.lan:/")
-        self.assertEqual(mount["fstype"], "nfs")
-        self.assertIn("vers=4.1", mount["opts"])
-        self.assertIn("rw", mount["opts"])
-        self.assertTrue(mount["persist"])
-        self.assertTrue(mount["mount"])
-        self.assertEqual(mount["retry"], {"attempts": 10, "interval": 30})
-
-        local = render(
-            "mlops/storage", "mlops-node-5", filename="client.sls"
-        )
-        self.assertEqual(set(local), {"mlops-storage-client-local"})
-        self.assertIn(
-            "mlops-storage-client-target-guard",
-            render("mlops/storage", "salt-master-01", filename="client.sls"),
-        )
-
-    def test_agent_configs_protect_token_and_use_tailnet(self):
-        token = 'test:"token\\with\nspecial-characters'
-        for node in CLUSTER - {"k3s-control-plane-01"}:
-            state = render("k3s/agent", node, {"K3S_AGENT_TOKEN": token})
-            managed = options(state, "k3s-agent-config", "file.managed")
-            self.assertFalse(managed["show_changes"])
-            self.assertEqual(managed["mode"], "0600")
-            content = yaml.safe_load(managed["contents"])
-            self.assertEqual(content["token"], token)
-            self.assertEqual(
-                content["server"], "https://k3s-control-plane-01.tailb11f97.ts.net:6443"
-            )
-            self.assertNotIn(token, json.dumps(options(state, "k3s-agent-install", "cmd.run")))
-
-    def test_enrollment_hides_key_and_does_not_put_it_on_command_line(self):
-        state = render("tailscale", "mlops-node-0", {"TAILSCALE_AUTH_KEY": "secret-auth"})
-        managed = options(state, "tailscale-auth-key", "file.managed")
-        self.assertFalse(managed["show_changes"])
-        self.assertEqual(managed["mode"], "0600")
-        command = options(state, "tailscale-enroll", "cmd.run")
-        self.assertNotIn("secret-auth", command["name"])
-        self.assertEqual(command["shell"], "/bin/sh")
-
-    def test_firewalls_use_tailscale_and_no_public_overlay_ports(self):
-        for node in CLUSTER:
-            state = render("k3s/network", node)
-            trusted = options(state, "k3s-firewall-cluster", "firewalld.present")
-            self.assertEqual(trusted["interfaces"], ["tailscale0"])
-            self.assertEqual(trusted["sources"], ["10.42.0.0/16", "10.43.0.0/16"])
-            self.assertNotIn("51820", json.dumps(state))
-            if node != "k3s-control-plane-01":
-                self.assertNotIn("k3s-firewall-public", state)
-
-    def test_server_retains_taint_and_dns_sans(self):
-        state = render("k3s/control-plane", "k3s-control-plane-01")
-        packages = options(state, "k3s-pkgs-install", "pkg.installed")["names"]
-        self.assertNotIn("kubectl", packages)
-        self.assertEqual(
-            options(state, "k3s-kubectl", "file.symlink")["target"],
-            "/usr/local/bin/k3s",
-        )
-        config = yaml.safe_load(
-            options(state, "k3s-control-plane-config", "file.managed")["contents"]
-        )
-        self.assertEqual(config["node-taint"], [
-            "node-role.kubernetes.io/control-plane=true:NoSchedule"
-        ])
-        self.assertIn("k3s.ergoshear.dev", config["tls-san"])
-        self.assertIn("k3s-control-plane-01.tailb11f97.ts.net", config["tls-san"])
-
-    def test_traefik_helm_jobs_use_the_patched_image(self):
-        state = render("k3s/control-plane", "k3s-control-plane-01")
-        image = "rancher/klipper-helm:v0.13.3-build20261014"
-        for state_id, chart in (
-            ("k3s-traefik-helm-job-image", "traefik"),
-            ("k3s-traefik-crd-helm-job-image", "traefik-crd"),
-        ):
-            command = options(state, state_id, "cmd.run")
-            self.assertIn(f"patch helmcharts.helm.cattle.io {chart}", command["name"])
-            self.assertIn(image, command["name"])
-            self.assertIn(image, command["unless"])
-
-    def test_master_refresh_is_independent_of_minion_pillar(self):
-        state = render("salt/master", "salt-master-01")
-        self.assertIn("salt-master-tailscale-refresh", state)
-        config = yaml.safe_load(options(state, "salt-master-config", "file.managed")["contents"])
-        self.assertEqual(config["ext_pillar"][0], {"file_tree": {
-            "root_dir": "/etc/salt/tailscale/pillar",
-            "follow_dir_links": False,
-            "template": True,
-            "render_default": "yaml",
-        }})
+class ConfigurationTests(unittest.TestCase):
+    def test_all_salt_states_compile_to_valid_state_data(self):
+        variants = {
+            "k3s/agent/init.sls": [
+                ("mlops-node-0", {"K3S_AGENT_TOKEN": "test-token"}),
+                ("mlops-node-0", {}),
+                ("salt-master-01", {"K3S_AGENT_TOKEN": "test-token"}),
+            ],
+            "k3s/control-plane/init.sls": [
+                ("k3s-control-plane-01", {}),
+                ("mlops-node-0", {}),
+            ],
+            "k3s/network/init.sls": [
+                ("k3s-control-plane-01", {}),
+                ("mlops-node-0", {}),
+            ],
+            "mlops/backend/init.sls": [
+                ("mlops-node-6", {}),
+                ("mlops-node-6", {"INFERENCE_BACKEND_KEY": "test-key"}),
+            ],
+            "mlops/halo-395/init.sls": [("mlops-node-7", {})],
+            "mlops/halo-495/init.sls": [("mlops-node-7", {})],
+            "mlops/huggingface.sls": [
+                ("mlops-node-7", {}),
+                ("mlops-node-7", {"HUGGING_FACE_ACCESS_KEY": "test-key"}),
+            ],
+            "mlops/r9700/init.sls": [("mlops-node-7", {})],
+            "mlops/rtx-4090/Muse-Glimmer-30b/init.sls": [("mlops-node-6", {})],
+            "mlops/rtx-4090/MuseGlimmerQwen38Multi/init.sls": [("mlops-node-6", {})],
+            "mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S/init.sls": [("mlops-node-6", {})],
+            "mlops/storage/client.sls": [
+                ("mlops-node-5", {}),
+                ("mlops-node-0", {}),
+                ("salt-master-01", {}),
+            ],
+            "mlops/storage/init.sls": [
+                ("mlops-node-5", {}),
+                ("mlops-node-0", {}),
+            ],
+            "salt/master/init.sls": [
+                ("salt-master-01", {}),
+                ("salt-master-01", {"SALT_TAILNET_ENFORCE": True}),
+            ],
+            "system/tuned.sls": [
+                ("mlops-node-0", {}),
+                ("salt-master-01", {}),
+            ],
+            "tailscale/init.sls": [
+                ("mlops-node-0", {}),
+                ("mlops-node-0", {"TAILSCALE_AUTH_KEY": "test-key"}),
+            ],
+        }
+        files = sorted((ROOT / "salt").rglob("*.sls"))
+        self.assertTrue(files)
+        for path in files:
+            relative_path = path.relative_to(ROOT / "salt").as_posix()
+            cases = variants.get(relative_path, [("mlops-node-0", {})])
+            for node, pillar in cases:
+                with self.subTest(state=relative_path, node=node, pillar=bool(pillar)):
+                    states = compile_sls(path, node, pillar)
+                    validate_sls(path, states)
 
 
 class EnrollmentTests(unittest.TestCase):

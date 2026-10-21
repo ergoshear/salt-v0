@@ -132,13 +132,17 @@ then enrolls them.
 
 ## Validation
 
-Run configuration, policy-merge, credential isolation, and enrollment tests:
+Run the Salt state compilation and validity checks, policy-merge, credential
+isolation, and enrollment tests:
 
 ```sh
 uv run --no-project --with-requirements tests/requirements.txt python -m unittest discover -s tests -v
 ```
 
 Test dependencies are listed in `tests/requirements.txt` and managed by uv.
+The state checks render every SLS file across relevant template branches and
+validate the compiled YAML/Salt state structure without asserting particular
+configuration values.
 
 To install pre-commit, its test dependencies, and enable the repository hook
 once per clone:
