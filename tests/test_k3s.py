@@ -176,15 +176,17 @@ class StateTests(unittest.TestCase):
     def test_targeting_and_fail_closed_guards(self):
         top = yaml.safe_load((ROOT / "salt/top.sls").read_text())["base"]
         self.assertIn("tailscale", top["*"])
-        self.assertIn("mlops.rtx-4090", top["mlops-node-6"])
+        rtx4090_state = "mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S"
+        self.assertIn(rtx4090_state, top["mlops-node-6"])
         self.assertIn("mlops.storage", top["mlops-node-5"])
         self.assertEqual(top["mlops-node-*"], [
             {"match": "glob"},
             "mlops.user",
             "mlops.storage.client",
         ])
-        self.assertTrue((ROOT / "salt/mlops/rtx-4090/init.sls").is_file())
-        self.assertFalse((ROOT / "salt/mlops/rtx-4090/ini.sls").exists())
+        rtx4090_path = ROOT / "salt/mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S"
+        self.assertTrue((rtx4090_path / "init.sls").is_file())
+        self.assertFalse((rtx4090_path / "ini.sls").exists())
         self.assertEqual(
             {node for node, states in top.items() if "k3s.agent" in states},
             {"mlops-node-0", "mlops-node-1"},

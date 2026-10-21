@@ -66,7 +66,8 @@ class SecurityBoundaryTests(unittest.TestCase):
     def test_all_inference_units_require_key_and_authenticated_warmup(self):
         for state, prefix in [
             ("halo-395", "halo395"), ("halo-495", "halo495"),
-            ("r9700", "r9700"), ("rtx-4090", "rtx4090"),
+            ("r9700", "r9700"),
+            ("rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S", "rtx4090"),
         ]:
             rendered = render("mlops/" + state, "mlops-node-7")
             unit = options(rendered, prefix + "_router_systemd_unit", "file.managed")
