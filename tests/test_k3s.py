@@ -194,6 +194,11 @@ class ConfigurationTests(unittest.TestCase):
                 ("mlops-node-4", {}),
                 ("mlops-node-4", {"HTTPD_SERVER_NAME": "llm.example.test"}),
                 ("mlops-node-4", {
+                    "HTTPD_SERVER_NAME": "llm.example.test",
+                    "HTTPD_SSL_CERT": "/tmp/cert.pem",
+                    "HTTPD_SSL_KEY": "/tmp/key.pem",
+                }),
+                ("mlops-node-4", {
                     "HTTPD_SSL_CERT": "/tmp/cert.pem",
                     "HTTPD_SSL_KEY": "/tmp/key.pem",
                 }),
@@ -248,6 +253,45 @@ class ConfigurationTests(unittest.TestCase):
                 with self.subTest(state=relative_path, node=node, pillar=bool(pillar)):
                     states = compile_sls(path, node, pillar)
                     validate_sls(path, states)
+
+
+    def test_httpd_proxy_uses_tailscale_name_and_certificate(self):
+        states = compile_sls(ROOT / "salt/httpd/init.sls", "mlops-node-7", {})
+        contents = states["httpd-proxy-config"]["file.managed"][0]["contents"]
+        self.assertIn("ServerName mlops-node-7.tailb11f97.ts.net", contents)
+        certificate = states["httpd-proxy-tls-cert"]["cmd.run"][0]
+        self.assertIn("tailscale cert", certificate["name"])
+        self.assertIn(
+            "--cert-file /etc/pki/tls/certs/httpd-proxy-mlops-node-7.crt",
+            certificate["name"],
+        )
+        self.assertIn(
+            "--key-file /etc/pki/tls/private/httpd-proxy-mlops-node-7.key",
+            certificate["name"],
+        )
+        self.assertIn("mlops-node-7.tailb11f97.ts.net", certificate["name"])
+
+    def test_httpd_proxy_requires_external_certificate_for_custom_name(self):
+        states = compile_sls(
+            ROOT / "salt/httpd/init.sls",
+            "mlops-node-7",
+            {"HTTPD_SERVER_NAME": "llm.example.test"},
+        )
+        self.assertIn("httpd-proxy-tailscale-name-required", states)
+        self.assertNotIn("httpd-proxy-tls-cert", states)
+
+        states = compile_sls(
+            ROOT / "salt/httpd/init.sls",
+            "mlops-node-7",
+            {
+                "HTTPD_SERVER_NAME": "llm.example.test",
+                "HTTPD_SSL_CERT": "/tmp/cert.pem",
+                "HTTPD_SSL_KEY": "/tmp/key.pem",
+            },
+        )
+        self.assertNotIn("httpd-proxy-tls-cert", states)
+        contents = states["httpd-proxy-config"]["file.managed"][0]["contents"]
+        self.assertIn("ServerName llm.example.test", contents)
 
 
 class EnrollmentTests(unittest.TestCase):
