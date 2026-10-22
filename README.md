@@ -197,6 +197,11 @@ sudo journalctl -u strata-qwen38-flash-next.service --no-pager -n 100
 
 ### R9700 / mlops-node-4
 
+The existing `mlops.r9700` highstate entry remains a compatibility wrapper for
+`mlops/r9700/Qwen3.6-35B-A3B-DFlash/init.sls`. It uses a literal Jinja include
+because the period in `Qwen3.6` cannot be used as a literal directory name in
+a dotted Salt state reference. Moving the model state does not switch backends.
+
 `mlops.r9700.StrataQwen38-Flash-Next` uses the same backup and shared
 restore/update implementation, restricted to `mlops-node-4`. A host without
 Strata bootstraps the Terminal from the verified runtime archive, copies

@@ -17,7 +17,8 @@ base:
     - match: compound
     - httpd
   'mlops-node-4':
-    - mlops.r9700
+#    - mlops.r9700.Qwen3.6-35B-A3B-DFlash
+    - mlops.r9700.StrataQwen38-Flash-Next
   'mlops-node-5':
     - mlops.storage
   'mlops-node-6':

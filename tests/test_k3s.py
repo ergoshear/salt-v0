@@ -153,6 +153,28 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(PROVISION.merge_policy(copy.deepcopy(merged)), merged)
 
 class ConfigurationTests(unittest.TestCase):
+    def test_r9700_compatibility_entry_preserves_moved_model_state(self):
+        self.assertEqual(
+            render("mlops/r9700", "mlops-node-4"),
+            render("mlops/r9700/Qwen3.6-35B-A3B-DFlash", "mlops-node-4"),
+        )
+
+    def test_top_file_references_existing_states(self):
+        root = ROOT / "salt"
+        top = compile_sls(root / "top.sls", "mlops-node-4")
+        for targets in top.values():
+            for declarations in targets.values():
+                for declaration in declarations:
+                    if not isinstance(declaration, str):
+                        continue
+                    path = root / declaration.replace(".", "/")
+                    with self.subTest(state=declaration):
+                        self.assertTrue(
+                            path.with_suffix(".sls").is_file()
+                            or (path / "init.sls").is_file(),
+                            f"Top file references missing state: {declaration}",
+                        )
+
     def test_gpu_state_workflow_queues_state_runs(self):
         workflow = yaml.safe_load(
             (ROOT / ".github/workflows/salt.yml").read_text()
@@ -245,7 +267,7 @@ class ConfigurationTests(unittest.TestCase):
                 ("mlops-node-7", {}),
                 ("mlops-node-7", {"HUGGING_FACE_ACCESS_KEY": "test-key"}),
             ],
-            "mlops/r9700/init.sls": [("mlops-node-7", {})],
+            "mlops/r9700/Qwen3.6-35B-A3B-DFlash/init.sls": [("mlops-node-4", {})],
             "mlops/r9700/StrataQwen38-Flash-Next/init.sls": [
                 ("mlops-node-4", {}),
                 ("mlops-node-6", {}),
