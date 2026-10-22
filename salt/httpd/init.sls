@@ -143,7 +143,7 @@ httpd-proxy-selinux:
   cmd.run:
     - name: setsebool -P httpd_can_network_connect on
     - unless: |
-        command -v setsebool >/dev/null 2>&1 || \
+        ! command -v setsebool >/dev/null 2>&1 || \
         [ "$(getenforce 2>/dev/null)" = "Disabled" ] || \
         [ "$(getsebool httpd_can_network_connect 2>/dev/null | awk '{print $NF}')" = "on" ]
     - require:
