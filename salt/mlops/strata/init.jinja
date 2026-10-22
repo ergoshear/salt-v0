@@ -1,0 +1,137 @@
+{% if grains['id'] == strata_node %}
+include:
+  - mlops.user
+  - mlops.storage.client
+  - mlops.backend
+
+strata-packages:
+  pkg.installed:
+    - names:
+      - curl
+      - rsync
+
+strata-gpu-ready:
+  cmd.run:
+{% if strata_backend == 'hip' %}
+    - name: test -r /dev/kfd && test -w /dev/kfd && test -r /dev/dri/renderD128 && test -w /dev/dri/renderD128
+    - runas: mlops
+    - require:
+      - user: strata-gpu-groups
+
+strata-gpu-groups:
+  user.present:
+    - name: mlops
+    - groups:
+      - video
+      - render
+    - remove_groups: False
+    - require:
+      - user: mlops-user-account
+{% else %}
+    - name: nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+{% endif %}
+
+strata-manager:
+  file.managed:
+    - name: /usr/local/libexec/strata-manage
+    - source: salt://mlops/strata/manage.py
+    - user: root
+    - group: root
+    - mode: '0755'
+    - makedirs: True
+
+strata-restore:
+  cmd.run:
+    - name: /usr/local/libexec/strata-manage restore
+    - runas: mlops
+    - stateful: True
+    - timeout: 14400
+    - require:
+      - pkg: strata-packages
+      - file: strata-manager
+      - user: mlops-user-account
+      - mount: mlops-storage-client-mount
+
+strata-launcher:
+  file.symlink:
+    - name: /home/mlops/.local/bin/strata
+    - target: /home/mlops/.local/share/strata/terminal/current/bin/strata
+    - user: mlops
+    - group: mlops
+    - makedirs: True
+    - require:
+      - cmd: strata-restore
+
+strata-unit:
+  file.managed:
+    - name: /etc/systemd/system/strata-qwen38-flash-next.service
+    - user: root
+    - group: root
+    - mode: '0644'
+    - contents: |
+        [Unit]
+        Description=Strata Qwen3.8 Flash Next IQ3_S (256K, MTP, vision)
+        Wants=network-online.target
+        After=network-online.target inference-firewall.service
+
+        [Service]
+        Type=simple
+        User=mlops
+        Group=mlops
+        WorkingDirectory=/home/mlops/.local/share/strata/terminal/current
+        Environment=HOME=/home/mlops
+        Environment=PATH=/home/mlops/.local/bin:/usr/local/bin:/usr/bin:/bin
+        Environment=PYTHONNOUSERSITE=1
+        ExecStart=/usr/bin/sh /home/mlops/.local/share/strata/terminal/current/bin/strata serve --engine strata --profile /home/mlops/.config/strata/iq3_s-256k.json --host 0.0.0.0 --port 8080 --parallel 3 --shutdown-timeout 30
+        Restart=on-failure
+        RestartSec=10
+        KillMode=mixed
+        TimeoutStopSec=90
+        LimitMEMLOCK=infinity
+        UMask=0077
+
+        [Install]
+        WantedBy=multi-user.target
+
+strata-daemon-reload:
+  cmd.run:
+    - name: systemctl daemon-reload
+    - onchanges:
+      - file: strata-unit
+
+strata-update:
+  cmd.run:
+    - name: /usr/local/libexec/strata-manage update --backend {{ strata_backend }}
+    - runas: mlops
+    - stateful: True
+    - timeout: 3600
+    - require:
+      - cmd: strata-restore
+      - cmd: strata-gpu-ready
+      - cmd: strata-daemon-reload
+
+strata-service:
+  service.running:
+    - name: strata-qwen38-flash-next
+    - enable: True
+    - require:
+      - cmd: strata-update
+      - cmd: inference-firewall-apply
+    - watch:
+      - file: strata-unit
+      - cmd: strata-restore
+      - cmd: strata-update
+
+strata-ready:
+  cmd.run:
+    - name: /usr/local/libexec/strata-manage health
+    - runas: mlops
+    - stateful: True
+    - timeout: 960
+    - require:
+      - service: strata-service
+{% else %}
+strata-target-guard:
+  test.fail_without_changes:
+    - name: StrataQwen38-Flash-Next is restricted to {{ strata_node }}
+{% endif %}

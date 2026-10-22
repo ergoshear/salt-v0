@@ -11,7 +11,7 @@ from unittest.mock import patch
 from test_k3s import load, render
 
 
-MANAGER = load("strata_manager", "salt/mlops/rtx-4090/StrataQwen38-Flash-Next/manage.py")
+MANAGER = load("strata_manager", "salt/mlops/strata/manage.py")
 BACKUP_MANIFEST = MANAGER.backup_manifest
 
 
@@ -58,8 +58,27 @@ class StrataTests(unittest.TestCase):
         self.assertIn("--parallel 3", unit)
         self.assertIn("User=mlops", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
+        self.assertIn(
+            "ExecStart=/usr/bin/sh "
+            "/home/mlops/.local/share/strata/terminal/current/bin/strata serve",
+            unit,
+        )
         self.assertIn("strata-target-guard",
                       render("mlops/rtx-4090/StrataQwen38-Flash-Next", "mlops-node-0"))
+
+    def test_r9700_state_selects_hip_and_checks_amd_device_access(self):
+        states = render("mlops/r9700/StrataQwen38-Flash-Next", "mlops-node-4")
+        update = states["strata-update"]["cmd.run"]
+        self.assertIn({"name": "/usr/local/libexec/strata-manage update --backend hip"}, update)
+        self.assertFalse(any("unless" in item or "onchanges" in item for item in update))
+        ready = states["strata-gpu-ready"]["cmd.run"]
+        command = next(item["name"] for item in ready if "name" in item)
+        self.assertIn("/dev/kfd", command)
+        self.assertIn("/dev/dri/renderD128", command)
+        self.assertIn({"runas": "mlops"}, ready)
+        self.assertIn({"remove_groups": False}, states["strata-gpu-groups"]["user.present"])
+        self.assertIn("strata-target-guard",
+                      render("mlops/r9700/StrataQwen38-Flash-Next", "mlops-node-6"))
 
     @patch.object(MANAGER, "run_json")
     @patch.object(MANAGER.subprocess, "run")
@@ -88,6 +107,36 @@ class StrataTests(unittest.TestCase):
             ["sudo", "-n", "systemctl", "stop", MANAGER.UNIT], check=True,
         )
         self.assertNotIn("--check", api.call_args_list[2].args[0])
+
+    @patch.object(MANAGER, "run_json")
+    @patch.object(MANAGER.subprocess, "run")
+    def test_first_hip_install_uses_staged_vision_reader_and_preserves_key(self, run, api):
+        calls = 0
+
+        def respond(arguments):
+            nonlocal calls
+            calls += 1
+            self.assertEqual(arguments[2:4], ["--backend", "hip"])
+            if "--model-config" in arguments:
+                profile = Path(arguments[arguments.index("--model-config") + 1])
+                smoke = json.loads(profile.read_text())
+                self.assertTrue(smoke["vision"]["exe"].endswith("/strata-vision-hip"))
+                self.assertFalse(Path(smoke["vision"]["exe"]).exists())
+                self.assertTrue(smoke["vision"]["cpu_exe"].endswith("/strata-vision"))
+                self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+                return {"ok": True}
+            report = self.report("install" if calls < 4 else "current")
+            report["engine"]["installed"] = {"folder": "new-hip-rx9070"}
+            return report
+
+        api.side_effect = respond
+        self.assertTrue(MANAGER.update("hip"))
+        self.assertEqual(calls, 4)
+        config = json.loads(MANAGER.PROFILE.read_text())
+        self.assertEqual(config["backend"], "hip")
+        self.assertTrue(config["vision"]["exe"].endswith("/new-hip-rx9070/strata-vision-hip"))
+        self.assertTrue(config["vision"]["cpu_exe"].endswith("/new-hip-rx9070/strata-vision"))
+        self.assertEqual(config["api_key"], self.profile["api_key"])
 
     @patch.object(MANAGER, "run_json")
     @patch.object(MANAGER.subprocess, "run")

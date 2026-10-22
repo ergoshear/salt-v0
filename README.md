@@ -160,6 +160,10 @@ and after copies or manifest changes. Inference reads local storage, not NFS.
 The saved runtime bootstraps a missing installation only; it does not overwrite
 newer runtime versions on subsequent applies. Salt also maintains the
 `/home/mlops/.local/bin/strata` launcher symlink.
+The system service invokes this shell launcher through `/usr/bin/sh` rather
+than asking systemd to execute an entry point under the user's data directory
+directly; this avoids the host's `203/EXEC` permission failure without changing
+SELinux enforcement or relabeling the runtime.
 
 **Every apply checks the official signed Strata update feed**, even when no
 files have changed. Available engine and Control/Terminal updates are installed
@@ -189,6 +193,39 @@ Service diagnostics on the node:
 ```sh
 sudo systemctl status strata-qwen38-flash-next.service --no-pager
 sudo journalctl -u strata-qwen38-flash-next.service --no-pager -n 100
+```
+
+### R9700 / mlops-node-4
+
+`mlops.r9700.StrataQwen38-Flash-Next` uses the same backup and shared
+restore/update implementation, restricted to `mlops-node-4`. A host without
+Strata bootstraps the Terminal from the verified runtime archive, copies
+the model data from `/srv/storage/strata` to local storage, and installs
+the latest matching **HIP** engine from the signed feed. CUDA is not used
+for AMD inference. Each subsequent apply checks the feed again.
+
+The R9700 is RDNA4 / **gfx1201** and uses Strata's Linux **rx9070** package,
+which bundles its ROCm libraries. No system-wide ROCm installation, compiler,
+CUDA driver, or CUDA toolkit is required. The state preserves existing
+user groups while adding `video` and `render`, checks access to `/dev/kfd`
+and the render device, and configures `strata-vision-hip` with the packaged
+CPU reader as fallback. Native update test-starts also resolve vision against
+the staged HIP package, not the original CUDA reader from the backup.
+See the upstream [AMD HIP guide](https://github.com/Niko1221/Strata/blob/main/docs/AMD_HIP.md).
+
+This alternative is **not enabled in `top.sls` automatically**. Before
+applying, stop and disable `r9700-llama-router.service` in the `mlops` user
+manager: it otherwise competes for port 8080, GPU memory, and system RAM.
+The resident-expert configuration needs roughly 46 GiB of RAM for experts
+alone. Ensure sufficient memory and local disk space for the approximately
+135 GiB model backup. The restored profile preserves the backup's Strata API
+key, so the AMD and NVIDIA instances initially share that credential.
+
+After publishing the shared template and helper along with the new state:
+
+```sh
+sudo salt 'mlops-node-4' state.apply mlops.r9700.StrataQwen38-Flash-Next test=True
+sudo salt 'mlops-node-4' state.apply mlops.r9700.StrataQwen38-Flash-Next
 ```
 
 ## Validation

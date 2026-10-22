@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import tarfile
+import tempfile
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -96,7 +97,7 @@ def restore():
     return changed
 
 
-def update():
+def update(backend=None):
     entries = backup_manifest()
     source = BACKUP / "setup/launch.json"
     if sha256(source) != entries["setup/launch.json"]:
@@ -104,7 +105,10 @@ def update():
     config = json.loads(source.read_text())
     if not isinstance(config.get("api_key"), str) or not config["api_key"].strip():
         raise ValueError("The backed-up Strata API key must be nonempty")
-    report = run_json([str(CLI), "update", "--check", "--output", "json"])
+    command = [str(CLI), "update"]
+    if backend:
+        command.extend(["--backend", backend])
+    report = run_json([*command, "--check", "--output", "json"])
     if report["serving"] and subprocess.run(
         ["systemctl", "is-active", "--quiet", UNIT], check=False,
     ).returncode != 0:
@@ -115,10 +119,20 @@ def update():
     changed = any(status != "current" for status in statuses)
     if changed:
         subprocess.run(["sudo", "-n", "systemctl", "stop", UNIT], check=True)
-        if run_json([str(CLI), "update", "--check", "--output", "json"])["serving"]:
+        if run_json([*command, "--check", "--output", "json"])["serving"]:
             raise RuntimeError("Stop unmanaged Strata instances before updating")
-        run_json([str(CLI), "update", "--model-config", str(source), "--output", "json"])
-        report = run_json([str(CLI), "update", "--check", "--output", "json"])
+        # Resolve vision against the staged package, not the backed-up CUDA package.
+        with tempfile.TemporaryDirectory(prefix="strata-update-") as directory:
+            smoke = json.loads(source.read_text())
+            reader = "strata-vision-hip" if backend == "hip" else "strata-vision"
+            smoke["vision"]["exe"] = str(Path(directory) / reader)
+            if backend == "hip":
+                smoke["vision"]["cpu_exe"] = str(Path(directory) / "strata-vision")
+            smoke_profile = Path(directory) / "profile.json"
+            smoke_profile.write_text(json.dumps(smoke))
+            smoke_profile.chmod(0o600)
+            run_json([*command, "--model-config", str(smoke_profile), "--output", "json"])
+        report = run_json([*command, "--check", "--output", "json"])
         if any(report[name]["status"] != "current" for name in ("engine", "control")):
             raise RuntimeError("Strata did not converge to the offered release")
     terminal = (SHARE / "terminal/current").resolve(strict=True)
@@ -130,8 +144,14 @@ def update():
             raise RuntimeError("Updated Control is missing the expert profile")
     engine = SHARE / "components/engine" / report["engine"]["installed"]["folder"]
     config["exe"] = "component:strata-engine"
+    if backend:
+        config["backend"] = backend
     config["cwd"] = str(terminal)
-    config["vision"]["exe"] = str(engine / "strata-vision")
+    config["vision"]["exe"] = str(
+        engine / ("strata-vision-hip" if backend == "hip" else "strata-vision")
+    )
+    if backend == "hip":
+        config["vision"]["cpu_exe"] = str(engine / "strata-vision")
     args = config["args"]
     args[args.index("--expert-profile") + 1] = str(terminal / "data/expert-profile.bin")
     config["args_written"] = list(args)
@@ -179,13 +199,15 @@ def health():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("restore", "update", "health"))
-    action = parser.parse_args().action
+    parser.add_argument("--backend", choices=("cuda", "hip"))
+    options = parser.parse_args()
+    action = options.action
     os.umask(0o077)
     if action == "health":
         health()
         print(json.dumps({"changed": False, "comment": "Strata readiness verified"}))
     else:
-        changed = restore() if action == "restore" else update()
+        changed = restore() if action == "restore" else update(options.backend)
         print(json.dumps({"changed": changed, "comment": f"Strata {action} complete"}))
 
 

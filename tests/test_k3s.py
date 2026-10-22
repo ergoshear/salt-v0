@@ -9,7 +9,7 @@ import unittest
 from urllib.error import HTTPError
 from unittest.mock import patch
 
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 import yaml
 
 
@@ -24,7 +24,9 @@ def load(name, path):
 
 
 def compile_sls(path, node, pillar=None):
-    template = Environment(undefined=StrictUndefined).from_string(path.read_text())
+    template = Environment(
+        undefined=StrictUndefined, loader=FileSystemLoader(ROOT / "salt"),
+    ).from_string(path.read_text())
     return yaml.safe_load(template.render(
         grains={"id": node, "pythonversion": [3, 14, 0, "final", 0]},
         salt={"pillar.get": lambda key, default=None: (pillar or {}).get(key, default)},
@@ -244,6 +246,10 @@ class ConfigurationTests(unittest.TestCase):
                 ("mlops-node-7", {"HUGGING_FACE_ACCESS_KEY": "test-key"}),
             ],
             "mlops/r9700/init.sls": [("mlops-node-7", {})],
+            "mlops/r9700/StrataQwen38-Flash-Next/init.sls": [
+                ("mlops-node-4", {}),
+                ("mlops-node-6", {}),
+            ],
             "mlops/rtx-4090/Muse-Glimmer-30b/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/MuseGlimmerQwen38Multi/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S/init.sls": [("mlops-node-6", {})],
