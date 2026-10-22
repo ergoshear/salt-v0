@@ -179,6 +179,31 @@ class ConfigurationTests(unittest.TestCase):
             commands["Install Hugging Face credentials on model downloaders"],
         )
 
+    def test_qwen38_flash_next_preset_keeps_experts_on_cpu_and_uses_mtp(self):
+        states = compile_sls(
+            ROOT / "salt/mlops/rtx-4090/Qwen38-Flash-Next/init.sls",
+            "mlops-node-6",
+            {},
+        )
+        managed = states["rtx4090_models_preset_ini"]["file.managed"]
+        contents = next(item["contents"] for item in managed if "contents" in item)
+        self.assertIn("[Qwen3.8-Flash-Next-Q2_K_XL-256K]", contents)
+        self.assertIn("cpu-moe = true", contents)
+        self.assertIn("moe-cache-mib = 8192", contents)
+        self.assertIn("load-mode = mmap", contents)
+        self.assertIn("lazy-mode = on", contents)
+        self.assertIn("spec-type = draft-mtp", contents)
+        self.assertIn("spec-draft-n-max = 5", contents)
+        self.assertIn("ctx-size = 262144", contents)
+        self.assertIn(
+            "model-draft = /home/mlops/models/Qwen3.8-Flash-Next-GGUF/MTP/"
+            "mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+            contents,
+        )
+        self.assertIn("rtx4090_download_qwen38_flash_main", states)
+        self.assertIn("rtx4090_download_qwen38_flash_mtp", states)
+        self.assertIn("rtx4090_download_qwen38_flash_mmproj", states)
+
     def test_all_salt_states_compile_to_valid_state_data(self):
         variants = {
             "k3s/agent/init.sls": [
@@ -222,6 +247,7 @@ class ConfigurationTests(unittest.TestCase):
             "mlops/rtx-4090/Muse-Glimmer-30b/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/MuseGlimmerQwen38Multi/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S/init.sls": [("mlops-node-6", {})],
+            "mlops/rtx-4090/Qwen38-Flash-Next/init.sls": [("mlops-node-6", {})],
             "mlops/storage/client.sls": [
                 ("mlops-node-5", {}),
                 ("mlops-node-0", {}),
@@ -257,7 +283,8 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_httpd_proxy_uses_tailscale_name_and_certificate(self):
         states = compile_sls(ROOT / "salt/httpd/init.sls", "mlops-node-7", {})
-        contents = states["httpd-proxy-config"]["file.managed"][0]["contents"]
+        managed = states["httpd-proxy-config"]["file.managed"]
+        contents = next(item["contents"] for item in managed if "contents" in item)
         self.assertIn("ServerName mlops-node-7.tailb11f97.ts.net", contents)
         certificate = states["httpd-proxy-tls-cert"]["cmd.run"][0]
         self.assertIn("tailscale cert", certificate["name"])
@@ -290,7 +317,8 @@ class ConfigurationTests(unittest.TestCase):
             },
         )
         self.assertNotIn("httpd-proxy-tls-cert", states)
-        contents = states["httpd-proxy-config"]["file.managed"][0]["contents"]
+        managed = states["httpd-proxy-config"]["file.managed"]
+        contents = next(item["contents"] for item in managed if "contents" in item)
         self.assertIn("ServerName llm.example.test", contents)
 
 

@@ -21,7 +21,9 @@ base:
   'mlops-node-5':
     - mlops.storage
   'mlops-node-6':
-    - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
+#    - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
+# Alternative 125B MoE for the same RTX 4090 host (requires ~96 GB system RAM):
+   - mlops.rtx-4090.Qwen38-Flash-Next
 #  'mlops-node-7':
 #    - mlops.halo-395.Ornith-1-5-35B
 #  'mlops-node-9':
