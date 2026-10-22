@@ -2,7 +2,7 @@
   HTTPS reverse proxy in front of a local service (default 127.0.0.1:8080).
 
   Pillar overrides:
-    HTTPD_SERVER_NAME      certificate/common name (default: minion id)
+    HTTPD_SERVER_NAME      TLS name (default: <minion-id>.tailb11f97.ts.net)
     HTTPD_PROXY_HOST       upstream address (default: 127.0.0.1)
     HTTPD_PROXY_PORT       upstream port (default: 8080)
     HTTPD_SSL_CERT         existing certificate path (requires HTTPD_SSL_KEY)
@@ -11,7 +11,8 @@
     HTTPD_FIREWALL_ZONE    firewalld zone to open (default: public)
 #}
 {% set node = grains['id'] %}
-{% set server_name = salt['pillar.get']('HTTPD_SERVER_NAME', node) %}
+{% set default_server_name = node ~ '.tailb11f97.ts.net' %}
+{% set server_name = salt['pillar.get']('HTTPD_SERVER_NAME', default_server_name) %}
 {% set proxy_host = salt['pillar.get']('HTTPD_PROXY_HOST', '127.0.0.1') %}
 {% set proxy_port = salt['pillar.get']('HTTPD_PROXY_PORT', 8080) %}
 {% set redirect_http = salt['pillar.get']('HTTPD_HTTP_REDIRECT', True) %}
@@ -22,16 +23,20 @@
 {% if (cert_pillar and not key_pillar) or (key_pillar and not cert_pillar) %}
 httpd-proxy-cert-pair-required:
   test.fail_without_changes:
-    - name: Set both HTTPD_SSL_CERT and HTTPD_SSL_KEY, or leave both unset for a self-signed certificate
+    - name: Set both HTTPD_SSL_CERT and HTTPD_SSL_KEY, or leave both unset to use a Tailscale certificate
+{% elif not cert_pillar and server_name != default_server_name %}
+httpd-proxy-tailscale-name-required:
+  test.fail_without_changes:
+    - name: Tailscale issues certificates only for {{ default_server_name }}; set HTTPD_SSL_CERT and HTTPD_SSL_KEY to use {{ server_name }}
 {% else %}
 {% if cert_pillar %}
   {% set cert = cert_pillar %}
   {% set key = key_pillar %}
-  {% set generate_cert = False %}
+  {% set obtain_cert = False %}
 {% else %}
   {% set cert = '/etc/pki/tls/certs/httpd-proxy-' ~ node ~ '.crt' %}
   {% set key = '/etc/pki/tls/private/httpd-proxy-' ~ node ~ '.key' %}
-  {% set generate_cert = True %}
+  {% set obtain_cert = True %}
 {% endif %}
 
 httpd-proxy-packages:
@@ -39,7 +44,7 @@ httpd-proxy-packages:
     - names:
       - httpd
       - mod_ssl
-{% if generate_cert %}
+{% if obtain_cert %}
       - openssl
 {% endif %}
 
@@ -65,7 +70,7 @@ httpd-proxy-modules:
     - require:
       - pkg: httpd-proxy-packages
 
-{% if generate_cert %}
+{% if obtain_cert %}
 httpd-proxy-cert-directory:
   file.directory:
     - name: /etc/pki/tls/certs
@@ -82,16 +87,18 @@ httpd-proxy-tls-cert:
   cmd.run:
     - name: |
         umask 077
-        openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
-          -keyout {{ key }} \
-          -out {{ cert }} \
-          -subj "/CN={{ server_name }}" \
-          -addext "subjectAltName=DNS:{{ server_name }}{% if server_name != node %},DNS:{{ node }}{% endif %}"
+        tailscale cert \
+          --cert-file {{ cert }} \
+          --key-file {{ key }} \
+          {{ server_name }}
         chmod 0644 {{ cert }}
-        printf '%s' {{ server_name | tojson }} > {{ key }}.stamp
+        chmod 0600 {{ key }}
     - unless: |
         test -s {{ cert }} && test -s {{ key }} && \
-        test "$(cat {{ key }}.stamp 2>/dev/null)" = {{ server_name | tojson }}
+        openssl x509 -checkend 2592000 -noout -in {{ cert }} >/dev/null 2>&1 && \
+        openssl x509 -in {{ cert }} -noout -checkhost {{ server_name }} >/dev/null 2>&1 && \
+        openssl x509 -in {{ cert }} -noout -issuer 2>/dev/null | grep -q "Let's Encrypt"
+    - timeout: 180
     - require:
       - pkg: httpd-proxy-packages
       - file: httpd-proxy-cert-directory
@@ -189,7 +196,7 @@ httpd-proxy-service:
     - watch:
       - file: httpd-proxy-config
       - file: httpd-proxy-modules
-{% if generate_cert %}
+{% if obtain_cert %}
       - cmd: httpd-proxy-tls-cert
 {% endif %}
 {% endif %}
