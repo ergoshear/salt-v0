@@ -107,6 +107,33 @@ k3s-traefik-helm-job-image:
     - require:
       - service: k3s-service
 
+k3s-control-plane-scheduling-taint:
+  cmd.run:
+    - name: >-
+        /usr/local/bin/k3s kubectl taint node k3s.ergoshear.dev
+        node-role.kubernetes.io/control-plane=true:NoSchedule --overwrite
+    - unless: >-
+        /usr/local/bin/k3s kubectl get node k3s.ergoshear.dev
+        -o 'jsonpath={.spec.taints[?(@.key=="node-role.kubernetes.io/control-plane")].effect}'
+        | grep -qx NoSchedule
+    - require:
+      - service: k3s-service
+
+{% for deployment in ['coredns', 'metrics-server', 'local-path-provisioner'] %}
+k3s-worker-placement-{{ deployment }}:
+  cmd.run:
+    - name: >-
+        /usr/local/bin/k3s kubectl patch deployment {{ deployment }} -n kube-system
+        --type=merge -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"node-role.kubernetes.io/control-plane","operator":"DoesNotExist"}]}]}}}}}}}'
+    - unless: >-
+        /usr/local/bin/k3s kubectl get deployment {{ deployment }} -n kube-system
+        -o 'jsonpath={.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[?(@.key=="node-role.kubernetes.io/control-plane")].operator}'
+        | grep -qx DoesNotExist
+    - require:
+      - service: k3s-service
+      - cmd: k3s-control-plane-scheduling-taint
+{% endfor %}
+
 k3s-traefik-crd-helm-job-image:
   cmd.run:
     - name: >-
