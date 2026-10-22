@@ -107,6 +107,7 @@ httpd-proxy-config:
     - contents: |
         # Managed by Salt (httpd state): TLS terminates here and proxies to
         # http://{{ proxy_host }}:{{ proxy_port }}/.
+        ServerName {{ server_name }}
         Listen 443 https
 
         <VirtualHost _default_:443>
@@ -139,10 +140,12 @@ httpd-proxy-config:
       - file: httpd-proxy-modules
 
 httpd-proxy-selinux:
-  selinux.boolean:
-    - name: httpd_can_network_connect
-    - value: 'on'
-    - persist: True
+  cmd.run:
+    - name: setsebool -P httpd_can_network_connect on
+    - unless: |
+        command -v setsebool >/dev/null 2>&1 || \
+        [ "$(getenforce 2>/dev/null)" = "Disabled" ] || \
+        [ "$(getsebool httpd_can_network_connect 2>/dev/null | awk '{print $NF}')" = "on" ]
     - require:
       - pkg: httpd-proxy-packages
 
@@ -182,7 +185,7 @@ httpd-proxy-service:
     - enable: True
     - require:
       - cmd: httpd-proxy-config-check
-      - selinux: httpd-proxy-selinux
+      - cmd: httpd-proxy-selinux
     - watch:
       - file: httpd-proxy-config
       - file: httpd-proxy-modules
