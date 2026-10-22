@@ -248,6 +248,10 @@ class ConfigurationTests(unittest.TestCase):
             "mlops/rtx-4090/MuseGlimmerQwen38Multi/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S/init.sls": [("mlops-node-6", {})],
             "mlops/rtx-4090/Qwen38-Flash-Next/init.sls": [("mlops-node-6", {})],
+            "mlops/rtx-4090/StrataQwen38-Flash-Next/init.sls": [
+                ("mlops-node-6", {}),
+                ("mlops-node-0", {}),
+            ],
             "mlops/storage/client.sls": [
                 ("mlops-node-5", {}),
                 ("mlops-node-0", {}),
