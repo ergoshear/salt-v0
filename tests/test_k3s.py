@@ -161,6 +161,7 @@ class ConfigurationTests(unittest.TestCase):
             for step in steps
             if step.get("name") in {
                 "Apply inference backend state to GPU minions",
+                "Apply HTTPS reverse proxy to GPU minions",
                 "Install Hugging Face credentials on model downloaders",
             }
         }
@@ -168,6 +169,10 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn(
             "state.apply mlops.backend queue=True",
             commands["Apply inference backend state to GPU minions"],
+        )
+        self.assertIn(
+            "state.apply httpd queue=True",
+            commands["Apply HTTPS reverse proxy to GPU minions"],
         )
         self.assertIn(
             "state.apply mlops.huggingface queue=True",
@@ -184,6 +189,15 @@ class ConfigurationTests(unittest.TestCase):
             "k3s/control-plane/init.sls": [
                 ("k3s-control-plane-01", {}),
                 ("mlops-node-0", {}),
+            ],
+            "httpd/init.sls": [
+                ("mlops-node-4", {}),
+                ("mlops-node-4", {"HTTPD_SERVER_NAME": "llm.example.test"}),
+                ("mlops-node-4", {
+                    "HTTPD_SSL_CERT": "/tmp/cert.pem",
+                    "HTTPD_SSL_KEY": "/tmp/key.pem",
+                }),
+                ("mlops-node-4", {"HTTPD_SSL_CERT": "/tmp/cert.pem"}),
             ],
             "k3s/network/init.sls": [
                 ("k3s-control-plane-01", {}),

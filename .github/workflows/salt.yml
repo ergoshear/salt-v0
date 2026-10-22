@@ -153,6 +153,9 @@ jobs:
       - name: Apply inference backend state to GPU minions
         run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.backend queue=True
 
+      - name: Apply HTTPS reverse proxy to GPU minions
+        run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply httpd queue=True
+
       - name: Install Hugging Face credentials on model downloaders
         run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface queue=True
 

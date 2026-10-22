@@ -169,6 +169,36 @@ Every `mlops-node-*` minion receives the `mlops.user` state. It ensures the
 ed25519 public key. SSH password and keyboard-interactive authentication are
 disabled; `sshd` requires public-key authentication.
 
+## HTTPS reverse proxy
+
+Nodes `mlops-node-4`, `mlops-node-6`, `mlops-node-7`, and `mlops-node-9`
+receive the `httpd` state. It installs `httpd` and `mod_ssl`, terminates TLS on
+443, proxies to `http://127.0.0.1:8080/`, and redirects port 80 to HTTPS. It
+opens `http` and `https` in firewalld, enables the
+`httpd_can_network_connect` SELinux boolean, and runs `httpd -t` before
+restarting the service on configuration changes.
+
+The state replaces `/etc/httpd/conf.d/ssl.conf` and the default SSL virtual
+host with the managed proxy virtual host. Pillar overrides:
+
+- `HTTPD_SERVER_NAME`: TLS common name and redirect target (defaults to the
+  minion ID).
+- `HTTPD_PROXY_HOST` and `HTTPD_PROXY_PORT`: upstream address and port
+  (defaults `127.0.0.1` and `8080`).
+- `HTTPD_SSL_CERT` and `HTTPD_SSL_KEY`: existing certificate and key paths.
+  Set both or neither; setting only one fails the state.
+- `HTTPD_HTTP_REDIRECT`: set to false to keep an HTTP virtual host instead of
+  redirecting (default true).
+- `HTTPD_FIREWALL_ZONE`: firewalld zone to open (default `public`).
+
+Without certificate pillar values, Salt creates a self-signed certificate at
+`/etc/pki/tls/certs/httpd-proxy-<minion-id>.crt` with its key in
+`/etc/pki/tls/private/`, and regenerates it when `HTTPD_SERVER_NAME` changes.
+The self-signed certificate is not renewed automatically; use the certificate
+pillar values for a publicly trusted certificate. Port 8080 remains limited by
+`mlops.backend` to loopback and authenticated proxy identities, so the
+reverse proxy reaches the backend over loopback.
+
 ## MLOps storage
 
 Only `mlops-node-5` receives `mlops.storage`. It removes that host's unused
