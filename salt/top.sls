@@ -22,10 +22,10 @@ base:
     - mlops.storage
   'mlops-node-6':
     - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
-  'mlops-node-7':
-    - mlops.halo-395.Ornith-1-5-35B
-  'mlops-node-9':
-    - mlops.halo-495.Qwen3-8-27B-GSQ-RCO-IQ3_S
+#  'mlops-node-7':
+#    - mlops.halo-395.Ornith-1-5-35B
+#  'mlops-node-9':
+#    - mlops.halo-495.Qwen3-8-27B-GSQ-RCO-IQ3_S
   'mlops-node-*':
     - match: glob
     - mlops.user
