@@ -130,6 +130,67 @@ The checkout must remain available and trusted. Newly accepted minions receive
 enrollment credentials after the next master refresh; their next highstate
 then enrolls them.
 
+## Strata on mlops-node-6
+
+The `mlops.rtx-4090.StrataQwen38-Flash-Next` state runs the extracted
+Qwen3.8-Flash-Next GSQ-RCO IQ3_S setup as
+`strata-qwen38-flash-next.service`, under `mlops`, enabled at boot. It retains
+the 262,144-token context, three parallel slots, int8 KV cache, resident
+experts, automatic expert cache/prefill, four-token MTP speculation at
+minimum probability 0.5, vision with a 1,024-token image budget, and a
+700 MiB VRAM reserve. This state is restricted to `mlops-node-6` and replaces
+the alternative llama.cpp states in highstate; do not enable both backends.
+It requires the host's working NVIDIA driver (`nvidia-smi`), which is checked
+before updating or starting the service.
+
+The private backup at `/srv/storage/strata` contains `models/` (both GGUF
+shards and vision projector), `packs/` (including tokenizer and packed
+experts), `mtp/`, and `setup/runtime.tar` (the original Strata installation,
+archived to avoid thousands of synchronous small-file writes over NFS).
+`setup/launch.json` retains the original API credential; `setup/snapshot.json`
+records the extracted process configuration without that credential.
+`SHA256SUMS` records the verified file hashes, and `BACKUP_COMPLETE` records
+the manifest hash and file count. Treat the entire backup as sensitive.
+Never commit the launch configuration or copy its API key into Salt source.
+
+Every apply requires the mounted NFS backup and its completion marker.
+It restores model data to `/home/mlops/models` with rsync, without deleting
+unrelated models, and verifies local model SHA-256 hashes on initial adoption
+and after copies or manifest changes. Inference reads local storage, not NFS.
+The saved runtime bootstraps a missing installation only; it does not overwrite
+newer runtime versions on subsequent applies. Salt also maintains the
+`/home/mlops/.local/bin/strata` launcher symlink.
+
+**Every apply checks the official signed Strata update feed**, even when no
+files have changed. Available engine and Control/Terminal updates are installed
+using `strata update`, which verifies and test-starts them before activation.
+The managed service is stopped for an available update and started again by Salt.
+Unmanaged Strata instances block updates rather than being killed.
+Feed failures, blocked updates, checksum failures, and failed readiness checks
+fail the state explicitly. Current releases do not cause a service restart.
+
+The generated profile is private (`0600`), preserves the backed-up Strata key,
+and tracks the selected engine, Control directory, and expert profile after
+updates. The existing `mlops.backend` state retains inference firewall policy;
+this state does not replace its separate credential. Clients of the Strata
+service must use the original Strata credential.
+Readiness requires an authenticated `/v1/models` response with the loaded model,
+256K context, and image input support, with up to 15 minutes for startup.
+
+Apply from the Salt master after publishing this checkout to its file roots:
+
+```sh
+sudo salt 'mlops-node-6' state.apply mlops.rtx-4090.StrataQwen38-Flash-Next test=True
+sudo salt 'mlops-node-6' state.apply mlops.rtx-4090.StrataQwen38-Flash-Next
+```
+
+Service diagnostics on the node:
+
+```sh
+sudo systemctl status strata-qwen38-flash-next.service --no-pager
+sudo journalctl -u strata-qwen38-flash-next.service --no-pager -n 100
+```
+
 ## Validation
 
 Run the Salt state compilation and validity checks, policy-merge, credential

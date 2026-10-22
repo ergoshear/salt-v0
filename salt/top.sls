@@ -20,8 +20,10 @@ base:
     - mlops.r9700
   'mlops-node-5':
     - mlops.storage
-#  'mlops-node-6':
-#    - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
+  'mlops-node-6':
+    - mlops.rtx-4090.StrataQwen38-Flash-Next
+# Alternative llama.cpp states for the same host (do not run alongside Strata):
+#   - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
 # Alternative 125B MoE for the same RTX 4090 host (requires ~96 GB system RAM):
 #   - mlops.rtx-4090.Qwen38-Flash-Next
 #  'mlops-node-7':
