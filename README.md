@@ -141,8 +141,9 @@ GPUs; for the Radeon RX 9070, Salt uses
 kernel driver active and expose `/dev/kfd`.
 
 Port 8880 is published only on `127.0.0.1`, so the API is local to
-`mlops-node-3` unless accessed through a separately configured proxy or tunnel.
-The state is restricted to `mlops-node-3`.
+`mlops-node-3`. Salt also configures Tailscale Serve to proxy it over HTTPS on
+port 443, making it available to tailnet clients without binding the container
+to a non-loopback interface. The state is restricted to `mlops-node-3`.
 
 ## Strata on mlops-node-6
 

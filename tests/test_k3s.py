@@ -172,6 +172,11 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("--publish=127.0.0.1:8880:8880", unit)
         self.assertNotIn("--gpus all", unit)
         self.assertIn("kokoro_service", states)
+        serve = states["kokoro_tailscale_serve"]["cmd.run"]
+        self.assertIn(
+            {"name": "tailscale serve --bg --https=443 http://127.0.0.1:8880"},
+            serve,
+        )
         self.assertIn("kokoro_target_guard", compile_sls(state_path, "mlops-node-4"))
 
     def test_top_file_references_existing_states(self):

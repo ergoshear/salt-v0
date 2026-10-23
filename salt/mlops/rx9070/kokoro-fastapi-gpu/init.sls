@@ -1,4 +1,7 @@
 {% if grains['id'] == 'mlops-node-3' %}
+include:
+  - tailscale
+
 kokoro_podman:
   pkg.installed:
     - name: podman
@@ -28,6 +31,7 @@ kokoro_systemd_unit:
         Description=Kokoro FastAPI ROCm text-to-speech service
         Wants=network-online.target
         After=network-online.target
+        After=tailscaled.service
 
         [Service]
         Type=simple
@@ -61,6 +65,14 @@ kokoro_service:
     - watch:
       - file: kokoro_systemd_unit
       - cmd: kokoro_rocm_image
+
+kokoro_tailscale_serve:
+  cmd.run:
+    - name: tailscale serve --bg --https=443 http://127.0.0.1:8880
+    - unless: tailscale serve status | grep -Fq '127.0.0.1:8880'
+    - require:
+      - service: tailscale-service
+      - service: kokoro_service
 {% else %}
 kokoro_target_guard:
   test.fail_without_changes:
