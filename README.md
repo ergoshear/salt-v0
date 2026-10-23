@@ -211,7 +211,10 @@ for AMD inference. Each subsequent apply checks the feed again.
 
 The R9700 is RDNA4 / **gfx1201** and uses Strata's Linux **rx9070** package,
 which bundles its ROCm libraries. No system-wide ROCm installation, compiler,
-CUDA driver, or CUDA toolkit is required. The state preserves existing
+CUDA driver, or CUDA toolkit is required.
+The Fedora `libatomic` package supplies `libatomic.so.1`, required by the
+prebuilt HIP engine and GPU vision reader.
+The state preserves existing
 user groups while adding `video` and `render`, checks access to `/dev/kfd`
 and the render device, and configures `strata-vision-hip` with the packaged
 CPU reader as fallback. Native update test-starts also resolve vision against

@@ -68,6 +68,9 @@ class StrataTests(unittest.TestCase):
 
     def test_r9700_state_selects_hip_and_checks_amd_device_access(self):
         states = render("mlops/r9700/StrataQwen38-Flash-Next", "mlops-node-4")
+        packages = next(item["names"] for item in states["strata-packages"]["pkg.installed"]
+                        if "names" in item)
+        self.assertIn("libatomic", packages)
         update = states["strata-update"]["cmd.run"]
         self.assertIn({"name": "/usr/local/libexec/strata-manage update --backend hip"}, update)
         self.assertFalse(any("unless" in item or "onchanges" in item for item in update))

@@ -9,6 +9,9 @@ strata-packages:
     - names:
       - curl
       - rsync
+{% if strata_backend == 'hip' %}
+      - libatomic
+{% endif %}
 
 strata-gpu-ready:
   cmd.run:
