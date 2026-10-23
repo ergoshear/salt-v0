@@ -119,11 +119,20 @@ class StrataTests(unittest.TestCase):
     @patch.object(MANAGER, "run_json")
     @patch.object(MANAGER.subprocess, "run")
     def test_available_update_stops_owned_service_and_updates_before_configuring(self, run, api):
-        api.side_effect = [
+        reports = iter([
             self.report("available"), self.report("available"),
             {"ok": True}, self.report(),
-        ]
-        self.assertTrue(MANAGER.update())
+        ])
+
+        def respond(arguments):
+            if "--model-config" in arguments:
+                smoke = json.loads(Path(arguments[arguments.index("--model-config") + 1]).read_text())
+                self.assertEqual(smoke["args"], smoke["args_written"])
+                self.assertEqual(smoke["args"][smoke["args"].index("--max-context") + 1], "131072")
+            return next(reports)
+
+        api.side_effect = respond
+        self.assertTrue(MANAGER.update(max_context=131072))
         run.assert_called_once_with(
             ["sudo", "-n", "systemctl", "stop", MANAGER.UNIT], check=True,
         )

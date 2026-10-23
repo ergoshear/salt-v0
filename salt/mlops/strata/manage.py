@@ -108,6 +108,7 @@ def update(backend=None, max_context=262144):
         args[args.index("--max-context") + 1] = str(max_context)
     else:
         args.extend(["--max-context", str(max_context)])
+    config["args_written"] = list(args)
     if not isinstance(config.get("api_key"), str) or not config["api_key"].strip():
         raise ValueError("The backed-up Strata API key must be nonempty")
     command = [str(CLI), "update"]
