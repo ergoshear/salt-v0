@@ -130,6 +130,20 @@ The checkout must remain available and trusted. Newly accepted minions receive
 enrollment credentials after the next master refresh; their next highstate
 then enrolls them.
 
+## Kokoro FastAPI on mlops-node-3
+
+The `mlops.rx9070.kokoro-fastapi-gpu` state runs
+`kokoro-fastapi.service` with Podman and the experimental AMD ROCm image,
+passing `/dev/kfd` and `/dev/dri` into the container. The CUDA
+`kokoro-fastapi-gpu` image and Docker's `--gpus all` option are for NVIDIA
+GPUs; for the Radeon RX 9070, Salt uses
+`ghcr.io/remsky/kokoro-fastapi-rocm:latest`. The host must have the AMDGPU
+kernel driver active and expose `/dev/kfd`.
+
+Port 8880 is published only on `127.0.0.1`, so the API is local to
+`mlops-node-3` unless accessed through a separately configured proxy or tunnel.
+The state is restricted to `mlops-node-3`.
+
 ## Strata on mlops-node-6
 
 The `mlops.rtx-4090.StrataQwen38-Flash-Next` state runs the extracted

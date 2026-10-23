@@ -16,6 +16,8 @@ base:
   'L@mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
     - match: compound
     - httpd
+  'mlops-node-3':
+    - mlops.rx9070.kokoro-fastapi-gpu
   'mlops-node-4':
 #    - mlops.r9700.Qwen3.6-35B-A3B-DFlash
     - mlops.r9700.StrataQwen38-Flash-Next

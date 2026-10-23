@@ -159,6 +159,21 @@ class ConfigurationTests(unittest.TestCase):
             render("mlops/r9700/Qwen3.6-35B-A3B-DFlash", "mlops-node-4"),
         )
 
+    def test_kokoro_rocm_service_is_scoped_and_loopback_only(self):
+        state_path = ROOT / "salt/mlops/rx9070/kokoro-fastapi-gpu/init.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        unit = next(
+            item["contents"]
+            for item in states["kokoro_systemd_unit"]["file.managed"]
+            if "contents" in item
+        )
+        self.assertIn("ghcr.io/remsky/kokoro-fastapi-rocm:latest", unit)
+        self.assertIn("--device=/dev/kfd --device=/dev/dri", unit)
+        self.assertIn("--publish=127.0.0.1:8880:8880", unit)
+        self.assertNotIn("--gpus all", unit)
+        self.assertIn("kokoro_service", states)
+        self.assertIn("kokoro_target_guard", compile_sls(state_path, "mlops-node-4"))
+
     def test_top_file_references_existing_states(self):
         root = ROOT / "salt"
         top = compile_sls(root / "top.sls", "mlops-node-4")
