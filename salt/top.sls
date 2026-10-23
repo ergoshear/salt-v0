@@ -13,7 +13,7 @@ base:
     - k3s.agent
   'mlops-node-1':
     - k3s.agent
-  'L@mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
+  'L@mlops-node-3,mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
     - match: compound
     - httpd
   'mlops-node-3':
