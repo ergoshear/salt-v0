@@ -1,3 +1,4 @@
+{% set strata_context = strata_context | default(262144) %}
 {% if grains['id'] == strata_node %}
 include:
   - mlops.user
@@ -104,7 +105,7 @@ strata-daemon-reload:
 
 strata-update:
   cmd.run:
-    - name: /usr/local/libexec/strata-manage update --backend {{ strata_backend }}
+    - name: /usr/local/libexec/strata-manage update --backend {{ strata_backend }} --max-context {{ strata_context }}
     - runas: mlops
     - stateful: True
     - timeout: 3600
@@ -127,7 +128,7 @@ strata-service:
 
 strata-ready:
   cmd.run:
-    - name: /usr/local/libexec/strata-manage health
+    - name: /usr/local/libexec/strata-manage health --max-context {{ strata_context }}
     - runas: mlops
     - stateful: True
     - timeout: 960

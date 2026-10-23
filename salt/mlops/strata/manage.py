@@ -97,12 +97,17 @@ def restore():
     return changed
 
 
-def update(backend=None):
+def update(backend=None, max_context=262144):
     entries = backup_manifest()
     source = BACKUP / "setup/launch.json"
     if sha256(source) != entries["setup/launch.json"]:
         raise RuntimeError("Backed-up profile checksum mismatch")
     config = json.loads(source.read_text())
+    args = config["args"]
+    if "--max-context" in args:
+        args[args.index("--max-context") + 1] = str(max_context)
+    else:
+        args.extend(["--max-context", str(max_context)])
     if not isinstance(config.get("api_key"), str) or not config["api_key"].strip():
         raise ValueError("The backed-up Strata API key must be nonempty")
     command = [str(CLI), "update"]
@@ -123,7 +128,7 @@ def update(backend=None):
             raise RuntimeError("Stop unmanaged Strata instances before updating")
         # Resolve vision against the staged package, not the backed-up CUDA package.
         with tempfile.TemporaryDirectory(prefix="strata-update-") as directory:
-            smoke = json.loads(source.read_text())
+            smoke = json.loads(json.dumps(config))
             reader = "strata-vision-hip" if backend == "hip" else "strata-vision"
             smoke["vision"]["exe"] = str(Path(directory) / reader)
             if backend == "hip":
@@ -169,7 +174,7 @@ def update(backend=None):
     return changed
 
 
-def health():
+def health(max_context=262144):
     key = json.loads(PROFILE.read_text())["api_key"]
     request = Request("http://127.0.0.1:8080/v1/models",
                       headers={"Authorization": "Bearer " + key})
@@ -181,11 +186,11 @@ def health():
                 models = json.load(response)["data"]
             if any(model["id"] == MODEL
                    and model.get("status", {}).get("value") == "loaded"
-                   and model.get("meta", {}).get("n_ctx") == 262144
+                   and model.get("meta", {}).get("n_ctx") == max_context
                    and "image" in model.get("architecture", {}).get("input_modalities", [])
                    for model in models):
                 return
-            last_error = "Expected loaded 256K model with vision is not ready"
+            last_error = f"Expected loaded {max_context}-token model with vision is not ready"
         except HTTPError as error:
             if error.code not in (502, 503):
                 raise
@@ -200,14 +205,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("restore", "update", "health"))
     parser.add_argument("--backend", choices=("cuda", "hip"))
+    parser.add_argument("--max-context", type=int, choices=(131072, 262144), default=262144)
     options = parser.parse_args()
     action = options.action
     os.umask(0o077)
     if action == "health":
-        health()
+        health(options.max_context)
         print(json.dumps({"changed": False, "comment": "Strata readiness verified"}))
     else:
-        changed = restore() if action == "restore" else update(options.backend)
+        changed = restore() if action == "restore" else update(options.backend, options.max_context)
         print(json.dumps({"changed": changed, "comment": f"Strata {action} complete"}))
 
 

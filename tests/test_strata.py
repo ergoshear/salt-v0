@@ -72,7 +72,8 @@ class StrataTests(unittest.TestCase):
                         if "names" in item)
         self.assertIn("libatomic", packages)
         update = states["strata-update"]["cmd.run"]
-        self.assertIn({"name": "/usr/local/libexec/strata-manage update --backend hip"}, update)
+        self.assertIn({"name": "/usr/local/libexec/strata-manage update --backend hip --max-context 262144"}, update)
+
         self.assertFalse(any("unless" in item or "onchanges" in item for item in update))
         ready = states["strata-gpu-ready"]["cmd.run"]
         command = next(item["name"] for item in ready if "name" in item)
@@ -82,6 +83,23 @@ class StrataTests(unittest.TestCase):
         self.assertIn({"remove_groups": False}, states["strata-gpu-groups"]["user.present"])
         self.assertIn("strata-target-guard",
                       render("mlops/r9700/StrataQwen38-Flash-Next", "mlops-node-6"))
+
+    @patch.object(MANAGER, "run_json")
+    @patch.object(MANAGER.subprocess, "run")
+    def test_node6_context_override_is_persistent_and_idempotent(self, run, api):
+        api.return_value = self.report()
+        states = render("mlops/rtx-4090/StrataQwen38-Flash-Next", "mlops-node-6")
+        self.assertIn(
+            {"name": "/usr/local/libexec/strata-manage update --backend cuda --max-context 131072"},
+            states["strata-update"]["cmd.run"],
+        )
+        self.assertIn({"name": "/usr/local/libexec/strata-manage health --max-context 131072"},
+                      states["strata-ready"]["cmd.run"])
+        self.assertTrue(MANAGER.update("cuda", 131072))
+        config = json.loads(MANAGER.PROFILE.read_text())
+        self.assertEqual(config["args"][config["args"].index("--max-context") + 1], "131072")
+        self.assertEqual(config["args"], config["args_written"])
+        self.assertFalse(MANAGER.update("cuda", 131072))
 
     @patch.object(MANAGER, "run_json")
     @patch.object(MANAGER.subprocess, "run")

@@ -135,7 +135,8 @@ then enrolls them.
 The `mlops.rtx-4090.StrataQwen38-Flash-Next` state runs the extracted
 Qwen3.8-Flash-Next GSQ-RCO IQ3_S setup as
 `strata-qwen38-flash-next.service`, under `mlops`, enabled at boot. It retains
-the 262,144-token context, three parallel slots, int8 KV cache, resident
+the model setup with a 131,072-token context on node 6 (262,144 on node 4),
+three parallel slots, int8 KV cache, resident
 experts, automatic expert cache/prefill, four-token MTP speculation at
 minimum probability 0.5, vision with a 1,024-token image budget, and a
 700 MiB VRAM reserve. This state is restricted to `mlops-node-6` and replaces
@@ -179,7 +180,12 @@ updates. The existing `mlops.backend` state retains inference firewall policy;
 this state does not replace its separate credential. Clients of the Strata
 service must use the original Strata credential.
 Readiness requires an authenticated `/v1/models` response with the loaded model,
-256K context, and image input support, with up to 15 minutes for startup.
+the host's configured context, and image input support, with up to 15 minutes
+for startup. The node-6 wrapper passes `--max-context 131072` to both profile
+generation and readiness; updates and restores do not reset it to the backup's
+256K value. This affects all presets sharing that resident engine. KV remains
+int8; llama.cpp cache-type options are not used. Throughput improvements must
+be measured rather than inferred from the smaller context.
 
 Apply from the Salt master after publishing this checkout to its file roots:
 
