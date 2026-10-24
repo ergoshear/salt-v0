@@ -28,13 +28,15 @@ proxies to the local service. The LiteLLM backend uses the
 - Salt access to the `mlops-node-3` minion.
 - A working AMD GPU driver exposing `/dev/kfd` and `/dev/dri`.
 - Tailscale connected on the host.
-- A `STUDIOFLOW_GITHUB_TOKEN` pillar value available to `mlops-node-3`, with
-  read access to the private application repository.
+- The private deploy key at `/home/mlops/.ssh/studioflow-tts` on `mlops-node-3`,
+  with its public key registered as a read-only deploy key on the private
+  application repository.
 - Network access from the host to GitHub and the registries or package sources
   needed to build the application images.
 
-The state installs Git and Podman. It fails early if the token or required GPU
-devices are unavailable.
+The state installs Git and Podman, pins GitHub's published Ed25519 SSH host
+key, and uses the deploy key for checkout. It fails if the repository cannot be
+accessed or the required GPU devices are unavailable.
 
 ## Apply the state
 
@@ -84,5 +86,5 @@ sudo tailscale serve status
 ```
 
 If a service does not start, check that the GPU device nodes are present, the
-GitHub token is available in the minion's pillar, and the relevant container
-logs report no model download or startup errors.
+deploy key can read the private repository, and the relevant container logs
+report no model download or startup errors.

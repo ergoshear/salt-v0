@@ -1,5 +1,4 @@
 {% if grains['id'] == 'mlops-node-3' %}
-{% set github_token = salt['pillar.get']('STUDIOFLOW_GITHUB_TOKEN', '') %}
 include:
   - tailscale
 
@@ -9,14 +8,15 @@ studioflow_tts_packages:
       - git
       - podman
 
-studioflow_tts_github_token_required:
-{% if github_token %}
-  test.succeed_without_changes:
-    - name: StudioFlow GitHub access token is available
-{% else %}
-  test.fail_without_changes:
-    - name: STUDIOFLOW_GITHUB_TOKEN must be present in this minion's Salt pillar
-{% endif %}
+studioflow_tts_github_known_hosts:
+  file.managed:
+    - name: /etc/studioflow-tts/known_hosts
+    - user: root
+    - group: root
+    - mode: '0644'
+    - makedirs: True
+    - contents: |
+        github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
 
 studioflow_tts_checkout_helper:
   file.managed:
@@ -32,16 +32,15 @@ studioflow_tts_checkout_helper:
         import subprocess
         from pathlib import Path
 
-        token = os.environ.get("STUDIOFLOW_GITHUB_TOKEN", "")
-        if not token or any(char in token for char in "\r\n"):
-            raise ValueError("STUDIOFLOW_GITHUB_TOKEN must be a nonempty single-line token")
-
-        repository = "https://github.com/ergoshear/studioflow-tts.git"
+        repository = "git@github.com:ergoshear/studioflow-tts.git"
         checkout = Path("/opt/studioflow-tts")
         env = os.environ.copy()
-        env["GIT_CONFIG_COUNT"] = "1"
-        env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
-        env["GIT_CONFIG_VALUE_0"] = "AUTHORIZATION: bearer " + token
+        env["GIT_SSH_COMMAND"] = (
+            "/usr/bin/ssh -i /home/mlops/.ssh/studioflow-tts "
+            "-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes "
+            "-o UserKnownHostsFile=/etc/studioflow-tts/known_hosts "
+            "-o GlobalKnownHostsFile=/dev/null"
+        )
 
         def run_git(*args, capture=False):
             return subprocess.run(
@@ -77,8 +76,8 @@ studioflow_tts_checkout:
         STUDIOFLOW_GITHUB_TOKEN: {{ github_token | tojson }}
     - require:
       - pkg: studioflow_tts_packages
-      - test: studioflow_tts_github_token_required
       - file: studioflow_tts_checkout_helper
+      - file: studioflow_tts_github_known_hosts
 
 {% for directory in ['voices', 'hf_cache', 'checkpoints'] %}
 studioflow_tts_{{ directory }}_directory:

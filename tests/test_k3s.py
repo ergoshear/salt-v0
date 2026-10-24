@@ -201,9 +201,7 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_studioflow_tailscale_serve_uses_litellm_ports(self):
         state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
-        states = compile_sls(
-            state_path, "mlops-node-3", {"STUDIOFLOW_GITHUB_TOKEN": "test-token"},
-        )
+        states = compile_sls(state_path, "mlops-node-3")
         expected = {
             "studioflow_fish_speech_tailscale_serve":
                 "tailscale serve --bg --https=8001 http://127.0.0.1:8001",
@@ -215,6 +213,15 @@ class ConfigurationTests(unittest.TestCase):
         for state_id, command in expected.items():
             with self.subTest(state=state_id):
                 self.assertEqual(states[state_id]["cmd.run"][0]["name"], command)
+
+    def test_studioflow_checkout_uses_ssh_deploy_key(self):
+        state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        helper = states["studioflow_tts_checkout_helper"]["file.managed"][0]["contents"]
+        self.assertIn("git@github.com:ergoshear/studioflow-tts.git", helper)
+        self.assertIn("/home/mlops/.ssh/studioflow-tts", helper)
+        self.assertIn("StrictHostKeyChecking=yes", helper)
+        self.assertNotIn("STUDIOFLOW_GITHUB_TOKEN", helper)
 
     def test_studioflow_disable_state_removes_custom_https_ports(self):
         state_path = ROOT / "salt/mlops/rx9070/disabled/studioflow-tts.sls"
