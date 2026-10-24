@@ -24,6 +24,11 @@ on:
         type: string
         default: ''
         required: false
+      recover_k3s_passwd:
+        description: Back up and remove the control-plane passwd file before upgrading
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -192,9 +197,13 @@ jobs:
       - name: Upgrade K3s release
         env:
           K3S_UPGRADE_VERSION: ${{ inputs.k3s_version }}
+          RECOVER_K3S_PASSWD: ${{ inputs.recover_k3s_passwd }}
         run: |
-          if [ -n "$K3S_UPGRADE_VERSION" ]; then
-            sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/upgrade_k3s.py" --version "$K3S_UPGRADE_VERSION"
-          else
-            sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/upgrade_k3s.py"
+          args=()
+          if [ "$RECOVER_K3S_PASSWD" = "true" ]; then
+            args+=(--recover-passwd)
           fi
+          if [ -n "$K3S_UPGRADE_VERSION" ]; then
+            args+=(--version "$K3S_UPGRADE_VERSION")
+          fi
+          sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/upgrade_k3s.py" "${args[@]}"

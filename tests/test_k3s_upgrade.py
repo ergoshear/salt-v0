@@ -17,8 +17,8 @@ def load_upgrade_module():
     return module
 
 
-def render_upgrade_state(node, pillar=None):
-    path = ROOT / "salt/k3s/upgrade.sls"
+def render_salt_state(state_file, node, pillar=None):
+    path = ROOT / "salt/k3s" / state_file
     template = Environment(undefined=StrictUndefined).from_string(path.read_text())
     return yaml.safe_load(template.render(
         grains={"id": node},
@@ -26,6 +26,10 @@ def render_upgrade_state(node, pillar=None):
             "pillar.get": lambda key, default=None: (pillar or {}).get(key, default),
         },
     ))
+
+
+def render_upgrade_state(node, pillar=None):
+    return render_salt_state("upgrade.sls", node, pillar)
 
 
 UPGRADE = load_upgrade_module()
@@ -130,6 +134,22 @@ class K3sUpgradeTests(unittest.TestCase):
         self.assertIn("test.fail_without_changes", unsupported["k3s-upgrade-prerequisites"])
         self.assertIn("test.fail_without_changes", missing_version["k3s-upgrade-prerequisites"])
 
+    def test_passwd_recovery_is_limited_to_control_plane_and_backs_up_exact_file(self):
+        server = render_salt_state("passwd_recovery.sls", "k3s-control-plane-01")
+        agent = render_salt_state("passwd_recovery.sls", "mlops-node-0")
+        recovery_command = server["k3s-passwd-recovery"]["cmd.run"][0]["name"]
+        self.assertIn(
+            "/var/lib/rancher/k3s/server/cred/passwd",
+            recovery_command,
+        )
+        self.assertIn("cp -a --", recovery_command)
+        self.assertIn('rm -- "$file"', recovery_command)
+        self.assertIn("systemctl start k3s", recovery_command)
+        self.assertIn(
+            "test.fail_without_changes",
+            agent["k3s-passwd-recovery-prerequisites"],
+        )
+
     def test_manual_workflow_upgrade_is_opt_in_and_uses_salt_master(self):
         workflow = yaml.load(
             (ROOT / ".github/workflows/salt.yml").read_text(),
@@ -138,6 +158,7 @@ class K3sUpgradeTests(unittest.TestCase):
         inputs = workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["update_k3s"]["default"], "false")
         self.assertEqual(inputs["k3s_version"]["default"], "")
+        self.assertEqual(inputs["recover_k3s_passwd"]["default"], "false")
         job = workflow["jobs"]["k3s-update"]
         self.assertEqual(job["runs-on"], ["self-hosted", "salt-master-01"])
         self.assertIn("inputs.update_k3s == true", job["if"])
@@ -147,5 +168,10 @@ class K3sUpgradeTests(unittest.TestCase):
             upgrade_step["env"]["K3S_UPGRADE_VERSION"],
             "${{ inputs.k3s_version }}",
         )
+        self.assertEqual(
+            upgrade_step["env"]["RECOVER_K3S_PASSWD"],
+            "${{ inputs.recover_k3s_passwd }}",
+        )
+        self.assertIn("--recover-passwd", upgrade_step["run"])
         self.assertIn('--version "$K3S_UPGRADE_VERSION"', upgrade_step["run"])
         self.assertIn("inputs.update_k3s != true", workflow["jobs"]["salt-apply"]["if"])

@@ -115,7 +115,10 @@ def salt(nodes, function, *arguments, timeout=300):
                 if not isinstance(state, dict) or state.get("result") is not True
             ]
             if failures:
-                raise RuntimeError(f"{minion}: failed Salt states: {failures}")
+                details = {state_id: response[state_id] for state_id in failures}
+                raise RuntimeError(
+                    f"{minion}: failed Salt states: {json.dumps(details, indent=2)}"
+                )
         if function == "cmd.run_all":
             if not isinstance(response, dict) or response.get("retcode") != 0:
                 raise RuntimeError(f"{minion}: command failed: {response}")
@@ -190,7 +193,21 @@ def apply_upgrade(minion, version):
     )
 
 
-def wait_for_nodes(expected_versions):
+def apply_passwd_recovery():
+    response = salt(
+        [CONTROL_PLANE],
+        "state.apply",
+        "k3s.passwd_recovery",
+        "queue=True",
+    )[CONTROL_PLANE]
+    for state in response.values():
+        if isinstance(state, dict):
+            output = state.get("changes", {}).get("stdout")
+            if output:
+                print(output, flush=True)
+
+
+def wait_for_nodes(expected_versions=None):
     deadline = time.monotonic() + READINESS_TIMEOUT
     last_status = "Kubernetes API has not returned node status"
     while True:
@@ -198,13 +215,15 @@ def wait_for_nodes(expected_versions):
             nodes = read_cluster_nodes()
             if set(nodes) == EXPECTED_NODES:
                 not_ready = sorted(name for name, state in nodes.items() if not state["ready"])
-                wrong_version = {
-                    name: state["version"]
-                    for name, state in nodes.items()
-                    if state["version"] != expected_versions[name]
-                }
+                wrong_version = {}
+                if expected_versions is not None:
+                    wrong_version = {
+                        name: state["version"]
+                        for name, state in nodes.items()
+                        if state["version"] != expected_versions[name]
+                    }
                 if not not_ready and not wrong_version:
-                    return
+                    return nodes
                 last_status = (
                     f"not Ready: {not_ready}; unexpected versions: {wrong_version}"
                 )
@@ -222,7 +241,7 @@ def wait_for_nodes(expected_versions):
         time.sleep(min(POLL_INTERVAL, remaining))
 
 
-def upgrade_cluster(target_version=None):
+def upgrade_cluster(target_version=None, recover_passwd=False):
     version = resolve_target_version(target_version)
     print(f"Target K3s release: {version}", flush=True)
 
@@ -237,7 +256,13 @@ def upgrade_cluster(target_version=None):
         raise RuntimeError(f"Required Kubernetes minions are not accepted: {sorted(missing)}")
     salt(CLUSTER_MINIONS, "test.ping", timeout=60)
 
-    nodes = read_cluster_nodes()
+    if recover_passwd:
+        print("Backing up and recovering the control-plane passwd file.", flush=True)
+        apply_passwd_recovery()
+        nodes = wait_for_nodes()
+    else:
+        nodes = read_cluster_nodes()
+
     plan = upgrade_plan(nodes, version)
     if not plan:
         print(f"All Kubernetes nodes are Ready on {version}; nothing to do.", flush=True)
@@ -257,4 +282,10 @@ def upgrade_cluster(target_version=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", help="Exact K3s release tag; defaults to latest stable")
-    upgrade_cluster(parser.parse_args().version)
+    parser.add_argument(
+        "--recover-passwd",
+        action="store_true",
+        help="Back up and remove the control-plane credential file before upgrading",
+    )
+    args = parser.parse_args()
+    upgrade_cluster(args.version, recover_passwd=args.recover_passwd)
