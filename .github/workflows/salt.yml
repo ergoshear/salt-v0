@@ -24,6 +24,11 @@ on:
         type: string
         default: ''
         required: false
+      inspect_k3s:
+        description: Run read-only diagnostics for the K3s nodes and latest upgrade state
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -49,7 +54,8 @@ jobs:
     if: >-
       github.event_name != 'pull_request' &&
       inputs.skip_dry_run != true &&
-      inputs.update_k3s != true
+      inputs.update_k3s != true &&
+      inputs.inspect_k3s != true
     needs: configuration-tests
     name: Test local highstate
     runs-on: [self-hosted, salt-master-01]
@@ -75,6 +81,7 @@ jobs:
       always() && github.event_name != 'pull_request' &&
       needs.configuration-tests.result == 'success' &&
       inputs.update_k3s != true &&
+      inputs.inspect_k3s != true &&
       (needs.salt-test.result == 'success' || inputs.skip_dry_run == true)
     runs-on: [self-hosted, salt-master-01]
     timeout-minutes: 30
@@ -179,7 +186,10 @@ jobs:
   k3s-update:
     name: Upgrade K3s cluster
     needs: configuration-tests
-    if: github.event_name == 'workflow_dispatch' && inputs.update_k3s == true
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.update_k3s == true &&
+      inputs.inspect_k3s != true
     runs-on: [self-hosted, salt-master-01]
     timeout-minutes: 45
     steps:
@@ -198,3 +208,73 @@ jobs:
           else
             sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/upgrade_k3s.py"
           fi
+
+  k3s-inspect:
+    name: Inspect K3s nodes
+    needs: configuration-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.inspect_k3s == true
+    runs-on: [self-hosted, salt-master-01]
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Inspect latest K3s upgrade state result
+        run: |
+          sudo -n python3 - <<'PY'
+          import json
+          import subprocess
+
+          jobs = json.loads(subprocess.check_output(
+              ["salt-run", "--out=json", "jobs.list_jobs"],
+              text=True,
+          ))
+          candidates = [
+              (jid, job)
+              for jid, job in jobs.items()
+              if job.get("Function") == "state.apply"
+              and "k3s.upgrade" in job.get("Arguments", [])
+          ]
+          if not candidates:
+              raise SystemExit("No cached state.apply k3s.upgrade job found")
+
+          jid = max(candidates, key=lambda candidate: candidate[0])[0]
+          result = json.loads(subprocess.check_output(
+              ["salt-run", "--out=json", "jobs.lookup_jid", jid],
+              text=True,
+          ))
+          failures = [
+              {
+                  "jid": jid,
+                  "minion": minion,
+                  "state": state_id,
+                  "comment": state.get("comment"),
+                  "changes": state.get("changes"),
+              }
+              for minion, states in result.items()
+              for state_id, state in states.items()
+              if isinstance(state, dict) and state.get("result") is False
+          ]
+          if not failures:
+              raise SystemExit(f"Cached upgrade job {jid} contains no failed states")
+          print(json.dumps(failures, indent=2))
+          PY
+
+      - name: Inspect K3s versions, services, and recent logs
+        if: always()
+        run: |
+          sudo -n salt --static --out=json \
+            -L 'k3s-control-plane-01,mlops-node-0,mlops-node-1' \
+            cmd.run '
+              unit=k3s
+              if ! systemctl cat "$unit" >/dev/null 2>&1; then unit=k3s-agent; fi
+              printf "VERSION\n"
+              /usr/local/bin/k3s --version 2>&1
+              printf "\nSERVICE: %s\n" "$unit"
+              systemctl show "$unit" -p ActiveState -p SubState -p ExecMainStatus
+              printf "\nRECENT_RELEVANT_LOGS\n"
+              journalctl -u "$unit" --since "2 hours ago" --no-pager -g "passwd|datastore|etcd|no leader|failed|error|fatal" -n 30
+            '

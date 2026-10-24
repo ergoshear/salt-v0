@@ -138,9 +138,11 @@ class K3sUpgradeTests(unittest.TestCase):
         inputs = workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["update_k3s"]["default"], "false")
         self.assertEqual(inputs["k3s_version"]["default"], "")
+        self.assertEqual(inputs["inspect_k3s"]["default"], "false")
         job = workflow["jobs"]["k3s-update"]
         self.assertEqual(job["runs-on"], ["self-hosted", "salt-master-01"])
         self.assertIn("inputs.update_k3s == true", job["if"])
+        self.assertIn("inputs.inspect_k3s != true", job["if"])
         upgrade_step = job["steps"][-1]
         self.assertIn("upgrade_k3s.py", upgrade_step["run"])
         self.assertEqual(
@@ -148,4 +150,8 @@ class K3sUpgradeTests(unittest.TestCase):
             "${{ inputs.k3s_version }}",
         )
         self.assertIn('--version "$K3S_UPGRADE_VERSION"', upgrade_step["run"])
+        inspect_job = workflow["jobs"]["k3s-inspect"]
+        self.assertIn("inputs.inspect_k3s == true", inspect_job["if"])
+        self.assertIn("jobs.lookup_jid", inspect_job["steps"][1]["run"])
         self.assertIn("inputs.update_k3s != true", workflow["jobs"]["salt-apply"]["if"])
+        self.assertIn("inputs.inspect_k3s != true", workflow["jobs"]["salt-apply"]["if"])
