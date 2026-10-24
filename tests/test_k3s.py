@@ -224,6 +224,18 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("StrictHostKeyChecking=yes", helper)
         self.assertNotIn("STUDIOFLOW_GITHUB_TOKEN", helper)
 
+    def test_studioflow_images_rebuild_when_missing_or_checkout_changes(self):
+        state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        build = states["studioflow_tts_build_images"]["cmd.run"]
+        command = next(item["name"] for item in build if "name" in item)
+        unless = next(item["unless"] for item in build if "unless" in item)
+        self.assertIn("container-images-revision", command)
+        self.assertIn("git -C /opt/studioflow-tts rev-parse HEAD", unless)
+        for image in ("fish-speech", "zonos", "whisper"):
+            with self.subTest(image=image):
+                self.assertIn(f"podman image exists localhost/studioflow-{image}:latest", unless)
+
     def test_studioflow_disable_state_removes_custom_https_ports(self):
         state_path = ROOT / "salt/mlops/rx9070/disabled/studioflow-tts.sls"
         states = compile_sls(state_path, "mlops-node-3")

@@ -96,18 +96,25 @@ studioflow_tts_gpu_ready:
 studioflow_tts_build_images:
   cmd.run:
     - name: |
+        set -eu
         podman build --quiet --tag localhost/studioflow-fish-speech:latest \
           --file /opt/studioflow-tts/Containerfile.fish-speech /opt/studioflow-tts
         podman build --quiet --tag localhost/studioflow-zonos:latest \
           --file /opt/studioflow-tts/Containerfile.zonos /opt/studioflow-tts
         podman build --quiet --tag localhost/studioflow-whisper:latest \
           --file /opt/studioflow-tts/Containerfile.whisper /opt/studioflow-tts
+        git -C /opt/studioflow-tts rev-parse HEAD > /var/lib/studioflow-tts/container-images-revision
     - timeout: 3600
     - require:
       - cmd: studioflow_tts_checkout
       - cmd: studioflow_tts_gpu_ready
-    - onchanges:
-      - cmd: studioflow_tts_checkout
+    - unless: >-
+        test -f /var/lib/studioflow-tts/container-images-revision &&
+        test "$(cat /var/lib/studioflow-tts/container-images-revision)" =
+        "$(git -C /opt/studioflow-tts rev-parse HEAD)" &&
+        podman image exists localhost/studioflow-fish-speech:latest &&
+        podman image exists localhost/studioflow-zonos:latest &&
+        podman image exists localhost/studioflow-whisper:latest
 
 studioflow_fish_speech_unit:
   file.managed:
