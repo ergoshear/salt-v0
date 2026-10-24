@@ -236,6 +236,20 @@ class ConfigurationTests(unittest.TestCase):
             with self.subTest(image=image):
                 self.assertIn(f"podman image exists localhost/studioflow-{image}:latest", unless)
 
+    def test_studioflow_container_units_use_compatible_ipc_options(self):
+        state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        for state_id in (
+            "studioflow_fish_speech_unit",
+            "studioflow_zonos_unit",
+            "studioflow_whisper_unit",
+        ):
+            managed = states[state_id]["file.managed"]
+            contents = next(item["contents"] for item in managed if "contents" in item)
+            with self.subTest(state=state_id):
+                self.assertIn("--ipc=host", contents)
+                self.assertNotIn("--shm-size=", contents)
+
     def test_studioflow_disable_state_removes_custom_https_ports(self):
         state_path = ROOT / "salt/mlops/rx9070/disabled/studioflow-tts.sls"
         states = compile_sls(state_path, "mlops-node-3")

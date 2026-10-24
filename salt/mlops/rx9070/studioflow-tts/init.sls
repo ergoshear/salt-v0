@@ -134,7 +134,7 @@ studioflow_fish_speech_unit:
         ExecStartPre=-/usr/bin/podman rm -f studioflow-fish-speech
         ExecStart=/usr/bin/podman run --rm --name studioflow-fish-speech \
           --device=/dev/kfd --device=/dev/dri \
-          --security-opt=label=disable --ipc=host --shm-size=8g \
+          --security-opt=label=disable --ipc=host \
           --volume=/var/lib/studioflow-tts/voices:/app/voices:z \
           --volume=/var/lib/studioflow-tts/hf_cache:/app/hf_cache:z \
           --volume=/var/lib/studioflow-tts/checkpoints:/app/checkpoints:z \
@@ -166,7 +166,7 @@ studioflow_zonos_unit:
         ExecStartPre=-/usr/bin/podman rm -f studioflow-zonos
         ExecStart=/usr/bin/podman run --rm --name studioflow-zonos \
           --device=/dev/kfd --device=/dev/dri \
-          --security-opt=label=disable --ipc=host --shm-size=8g \
+          --security-opt=label=disable --ipc=host \
           --volume=/var/lib/studioflow-tts/voices:/app/voices:z \
           --volume=/var/lib/studioflow-tts/hf_cache:/app/hf_cache:z \
           --volume=/var/lib/studioflow-tts/checkpoints:/app/checkpoints:z \
@@ -198,7 +198,7 @@ studioflow_whisper_unit:
         ExecStartPre=-/usr/bin/podman rm -f studioflow-whisper
         ExecStart=/usr/bin/podman run --rm --name studioflow-whisper \
           --device=/dev/kfd --device=/dev/dri \
-          --security-opt=label=disable --ipc=host --shm-size=8g \
+          --security-opt=label=disable --ipc=host \
           --volume=/var/lib/studioflow-tts/voices:/app/voices:z \
           --volume=/var/lib/studioflow-tts/hf_cache:/app/hf_cache:z \
           --volume=/var/lib/studioflow-tts/checkpoints:/app/checkpoints:z \

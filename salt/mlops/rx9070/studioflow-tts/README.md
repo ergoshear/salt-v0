@@ -49,7 +49,8 @@ salt 'mlops-node-3' state.apply mlops.rx9070.studioflow-tts
 
 On apply, Salt fetches the latest `main` revision of the application
 repository, builds the Fish Speech, Zonos, and Whisper images when the checkout
-changes, then starts or updates the corresponding systemd services.
+changes or any expected image is missing, then starts or updates the
+corresponding systemd services.
 
 ## Persistent data
 
