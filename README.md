@@ -9,7 +9,14 @@ run and apply so the master's configured file roots receive the main checkout.
 Only after success does it apply the highstate using the required
 `TS_API_KEY`, `LITELLM_BACKEND_KEY`, and `HUGGING_FACE_ACCESS_KEY` GitHub
 Actions secrets. Manual dispatch runs the dry-run gate by default; enable
-`skip_dry_run` only for a direct recovery apply. The apply writes model
+`skip_dry_run` only for a direct recovery apply. To run a K3s upgrade instead,
+manually dispatch the workflow with `update_k3s` enabled. That path skips the
+normal Salt apply, resolves the stable release once, and upgrades the server
+first followed by each worker individually. It requires all three Kubernetes
+nodes to be Ready, waits for each node to return Ready on the target version,
+and refuses unsupported minor-version skips or downgrades. If every node
+already runs the stable release, it exits without restarting K3s. The apply
+writes model
 credentials as private, master-owned file-tree pillars for only
 `mlops-node-4`, `mlops-node-6`, `mlops-node-7`, and `mlops-node-9`, checks that
 the compiled pillars are scoped to those hosts, and applies the backend and
