@@ -72,8 +72,6 @@ studioflow_tts_checkout:
     - name: /usr/bin/python3 /usr/local/libexec/studioflow-tts-checkout
     - stateful: True
     - hide_output: True
-    - env:
-        STUDIOFLOW_GITHUB_TOKEN: {{ github_token | tojson }}
     - require:
       - pkg: studioflow_tts_packages
       - file: studioflow_tts_checkout_helper
