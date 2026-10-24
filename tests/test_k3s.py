@@ -217,7 +217,8 @@ class ConfigurationTests(unittest.TestCase):
     def test_studioflow_checkout_uses_ssh_deploy_key(self):
         state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
         states = compile_sls(state_path, "mlops-node-3")
-        helper = states["studioflow_tts_checkout_helper"]["file.managed"][0]["contents"]
+        managed = states["studioflow_tts_checkout_helper"]["file.managed"]
+        helper = next(item["contents"] for item in managed if "contents" in item)
         self.assertIn("git@github.com:ergoshear/studioflow-tts.git", helper)
         self.assertIn("/home/mlops/.ssh/studioflow-tts", helper)
         self.assertIn("StrictHostKeyChecking=yes", helper)
