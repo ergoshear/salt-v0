@@ -199,6 +199,33 @@ class ConfigurationTests(unittest.TestCase):
             compile_sls(state_path, "mlops-node-4"),
         )
 
+    def test_studioflow_tailscale_serve_uses_litellm_ports(self):
+        state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
+        states = compile_sls(
+            state_path, "mlops-node-3", {"STUDIOFLOW_GITHUB_TOKEN": "test-token"},
+        )
+        expected = {
+            "studioflow_fish_speech_tailscale_serve":
+                "tailscale serve --bg --https=8001 http://127.0.0.1:8001",
+            "studioflow_zonos_tailscale_serve":
+                "tailscale serve --bg --https=8002 http://127.0.0.1:8002",
+            "studioflow_whisper_tailscale_serve":
+                "tailscale serve --bg --https=8003 http://127.0.0.1:8003",
+        }
+        for state_id, command in expected.items():
+            with self.subTest(state=state_id):
+                self.assertEqual(states[state_id]["cmd.run"][0]["name"], command)
+
+    def test_studioflow_disable_state_removes_custom_https_ports(self):
+        state_path = ROOT / "salt/mlops/rx9070/disabled/studioflow-tts.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        for index, port in enumerate((8001, 8002, 8003), start=1):
+            with self.subTest(port=port):
+                self.assertEqual(
+                    states[f"rx9070_studioflow_route_absent_{index}"]["cmd.run"][0]["name"],
+                    f"tailscale serve --https={port} / off",
+                )
+
     def test_each_deployment_has_a_matching_disabled_state(self):
         disabled_states = [
             ("mlops/halo-395/DiffusionGemma-26B", "mlops-node-7"),

@@ -7,8 +7,8 @@
   {'service': 'studioflow-whisper.service', 'path': '/etc/systemd/system/studioflow-whisper.service'}
 ] %}
 {% set disabled_routes = [
-  {'path': '/fish', 'endpoint': '127.0.0.1:8001'},
-  {'path': '/zonos', 'endpoint': '127.0.0.1:8002'},
-  {'path': '/whisper', 'endpoint': '127.0.0.1:8003'}
+  {'path': '/', 'port': 8001, 'endpoint': '127.0.0.1:8001'},
+  {'path': '/', 'port': 8002, 'endpoint': '127.0.0.1:8002'},
+  {'path': '/', 'port': 8003, 'endpoint': '127.0.0.1:8003'}
 ] %}
 {% include 'mlops/disabled/runtime.jinja' %}

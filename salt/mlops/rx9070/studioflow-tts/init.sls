@@ -235,7 +235,7 @@ studioflow_{{ name.replace('-', '_') }}_service:
 
 studioflow_fish_speech_tailscale_serve:
   cmd.run:
-    - name: tailscale serve --bg --https=443 --set-path=/fish http://127.0.0.1:8001
+    - name: tailscale serve --bg --https=8001 http://127.0.0.1:8001
     - unless: tailscale serve status | grep -Fq '127.0.0.1:8001'
     - require:
       - service: tailscale-service
@@ -243,7 +243,7 @@ studioflow_fish_speech_tailscale_serve:
 
 studioflow_zonos_tailscale_serve:
   cmd.run:
-    - name: tailscale serve --bg --https=443 --set-path=/zonos http://127.0.0.1:8002
+    - name: tailscale serve --bg --https=8002 http://127.0.0.1:8002
     - unless: tailscale serve status | grep -Fq '127.0.0.1:8002'
     - require:
       - service: tailscale-service
@@ -251,7 +251,7 @@ studioflow_zonos_tailscale_serve:
 
 studioflow_whisper_tailscale_serve:
   cmd.run:
-    - name: tailscale serve --bg --https=443 --set-path=/whisper http://127.0.0.1:8003
+    - name: tailscale serve --bg --https=8003 http://127.0.0.1:8003
     - unless: tailscale serve status | grep -Fq '127.0.0.1:8003'
     - require:
       - service: tailscale-service

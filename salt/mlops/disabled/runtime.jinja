@@ -56,7 +56,7 @@
 {% for route in disabled_routes %}
 {{ disabled_id }}_route_absent_{{ loop.index }}:
   cmd.run:
-    - name: tailscale serve --https=443 {{ route.path }} off
+    - name: tailscale serve --https={{ route.port }} {{ route.path }} off
     - onlyif: tailscale serve status | grep -Fq '{{ route.endpoint }}'
 {% endfor %}
 {% else %}

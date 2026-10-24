@@ -12,16 +12,16 @@ repository and is checked out to `/opt/studioflow-tts` on the host.
 
 ## Services
 
-| Service | systemd unit | Local address | Tailscale path |
+| Service | systemd unit | Local address | Tailscale HTTPS URL |
 | --- | --- | --- | --- |
-| Fish Speech | `studioflow-fish-speech` | `127.0.0.1:8001` | `/fish` |
-| Zonos | `studioflow-zonos` | `127.0.0.1:8002` | `/zonos` |
-| Whisper alignment | `studioflow-whisper` | `127.0.0.1:8003` | `/whisper` |
+| Fish Speech | `studioflow-fish-speech` | `127.0.0.1:8001` | `https://<hostname>:8001/v1` |
+| Zonos | `studioflow-zonos` | `127.0.0.1:8002` | `https://<hostname>:8002/v1` |
+| Whisper alignment | `studioflow-whisper` | `127.0.0.1:8003` | `https://<hostname>:8003/v1` |
 
 The local ports are bound to loopback, not exposed directly on the host's
-network interfaces. Tailscale Serve publishes each service over HTTPS on port
-443. For example, the Fish Speech service is available at
-`https://<mlops-node-3-tailnet-hostname>/fish` to authorized tailnet clients.
+network interfaces. Tailscale Serve terminates HTTPS on the matching port and
+proxies to the local service. The LiteLLM backend uses the
+`mlops-node-3.tailb11f97.ts.net` hostname and the `/v1` API path.
 
 ## Requirements
 
