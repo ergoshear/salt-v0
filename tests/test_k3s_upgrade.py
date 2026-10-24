@@ -47,6 +47,14 @@ class K3sUpgradeTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     UPGRADE.parse_release_location(location)
 
+    def test_exact_target_version_is_validated(self):
+        self.assertEqual(
+            UPGRADE.resolve_target_version("v1.37.1+k3s1"),
+            "v1.37.1+k3s1",
+        )
+        with self.assertRaisesRegex(RuntimeError, "Invalid target K3s release version"):
+            UPGRADE.resolve_target_version("v1.37.1; echo unsafe")
+
     def test_upgrade_plan_updates_server_then_agents_and_skips_current_nodes(self):
         nodes = {
             "k3s.ergoshear.dev": {"ready": True, "version": "v1.36.4+k3s1"},
@@ -67,6 +75,20 @@ class K3sUpgradeTests(unittest.TestCase):
             for name in UPGRADE.EXPECTED_NODES
         }
         self.assertEqual(UPGRADE.upgrade_plan(nodes, "v1.36.5+k3s1"), [])
+
+    def test_upgrade_plan_allows_one_minor_version_upgrade(self):
+        nodes = {
+            name: {"ready": True, "version": "v1.36.5+k3s1"}
+            for name in UPGRADE.EXPECTED_NODES
+        }
+        self.assertEqual(
+            UPGRADE.upgrade_plan(nodes, "v1.37.1+k3s1"),
+            [
+                ("k3s-control-plane-01", "k3s.ergoshear.dev"),
+                ("mlops-node-0", "mlops-node-0"),
+                ("mlops-node-1", "mlops-node-1"),
+            ],
+        )
 
     def test_upgrade_plan_rejects_unready_nodes_and_minor_version_skips(self):
         nodes = {
@@ -115,8 +137,15 @@ class K3sUpgradeTests(unittest.TestCase):
         )
         inputs = workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["update_k3s"]["default"], "false")
+        self.assertEqual(inputs["k3s_version"]["default"], "")
         job = workflow["jobs"]["k3s-update"]
         self.assertEqual(job["runs-on"], ["self-hosted", "salt-master-01"])
         self.assertIn("inputs.update_k3s == true", job["if"])
-        self.assertIn("upgrade_k3s.py", job["steps"][-1]["run"])
+        upgrade_step = job["steps"][-1]
+        self.assertIn("upgrade_k3s.py", upgrade_step["run"])
+        self.assertEqual(
+            upgrade_step["env"]["K3S_UPGRADE_VERSION"],
+            "${{ inputs.k3s_version }}",
+        )
+        self.assertIn('--version "$K3S_UPGRADE_VERSION"', upgrade_step["run"])
         self.assertIn("inputs.update_k3s != true", workflow["jobs"]["salt-apply"]["if"])

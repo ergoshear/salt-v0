@@ -1,3 +1,4 @@
+import argparse
 import json
 import re
 import subprocess
@@ -62,6 +63,16 @@ def latest_stable_version():
             raise
         location = error.headers.get("Location")
     return parse_release_location(location)
+
+
+def resolve_target_version(version):
+    if version is None:
+        return latest_stable_version()
+    try:
+        parse_version(version)
+    except ValueError as error:
+        raise RuntimeError(f"Invalid target K3s release version: {version!r}") from error
+    return version
 
 
 def salt(nodes, function, *arguments, timeout=300):
@@ -211,9 +222,9 @@ def wait_for_nodes(expected_versions):
         time.sleep(min(POLL_INTERVAL, remaining))
 
 
-def upgrade_cluster():
-    version = latest_stable_version()
-    print(f"Latest stable K3s release: {version}", flush=True)
+def upgrade_cluster(target_version=None):
+    version = resolve_target_version(target_version)
+    print(f"Target K3s release: {version}", flush=True)
 
     accepted = json.loads(
         subprocess.check_output(
@@ -244,4 +255,6 @@ def upgrade_cluster():
 
 
 if __name__ == "__main__":
-    upgrade_cluster()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--version", help="Exact K3s release tag; defaults to latest stable")
+    upgrade_cluster(parser.parse_args().version)
