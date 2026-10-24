@@ -157,6 +157,18 @@ Port 8880 is published only on `127.0.0.1`, so the API is local to
 port 443, making it available to tailnet clients without binding the container
 to a non-loopback interface. The state is restricted to `mlops-node-3`.
 
+Deployment states are not automatically undone when removed from `top.sls`.
+For alternatives that create distinct services, include the old deployment's
+explicit `mlops.<hardware>.disabled.<deployment>` state alongside the new one.
+For example, `mlops.rx9070.disabled.kokoro-fastapi-gpu` stops and disables
+Kokoro, removes its systemd unit, and removes only its root Tailscale Serve
+route. Matching disabled states are provided for each model and TTS deployment.
+They stop and disable its runtime and remove its unit and deployment-specific
+Serve routes, while preserving model files, caches, and container images.
+States that manage the same systemd unit can replace its contents directly.
+Shared configuration states such as `mlops.backend`, `mlops.user`, and
+`mlops.storage` are not deployments and should remain enabled as needed.
+
 ## Strata on mlops-node-6
 
 The `mlops.rtx-4090.StrataQwen38-Flash-Next` state runs the extracted

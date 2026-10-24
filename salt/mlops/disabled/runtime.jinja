@@ -1,0 +1,66 @@
+{% if grains['id'] == disabled_target %}
+{% for unit in disabled_user_units %}
+{{ disabled_id }}_user_stop_{{ loop.index }}:
+  cmd.run:
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u mlops)"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        systemctl --user disable --now {{ unit }}
+    - runas: mlops
+    - onlyif: test -f /home/mlops/.config/systemd/user/{{ unit }}
+
+{{ disabled_id }}_user_unit_absent_{{ loop.index }}:
+  file.absent:
+    - name: /home/mlops/.config/systemd/user/{{ unit }}
+    - require:
+      - cmd: {{ disabled_id }}_user_stop_{{ loop.index }}
+{% endfor %}
+
+{% for unit in disabled_system_units %}
+{{ disabled_id }}_system_stop_{{ loop.index }}:
+  cmd.run:
+    - name: systemctl disable --now {{ unit.service }}
+    - onlyif: test -f {{ unit.path }}
+
+{{ disabled_id }}_system_unit_absent_{{ loop.index }}:
+  file.absent:
+    - name: {{ unit.path }}
+    - require:
+      - cmd: {{ disabled_id }}_system_stop_{{ loop.index }}
+{% endfor %}
+
+{% if disabled_user_units %}
+{{ disabled_id }}_user_daemon_reload:
+  cmd.run:
+    - name: |
+        export XDG_RUNTIME_DIR="/run/user/$(id -u mlops)"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        systemctl --user daemon-reload
+    - runas: mlops
+    - onchanges:
+{% for unit in disabled_user_units %}
+      - file: {{ disabled_id }}_user_unit_absent_{{ loop.index }}
+{% endfor %}
+{% endif %}
+
+{% if disabled_system_units %}
+{{ disabled_id }}_system_daemon_reload:
+  cmd.run:
+    - name: systemctl daemon-reload
+    - onchanges:
+{% for unit in disabled_system_units %}
+      - file: {{ disabled_id }}_system_unit_absent_{{ loop.index }}
+{% endfor %}
+{% endif %}
+
+{% for route in disabled_routes %}
+{{ disabled_id }}_route_absent_{{ loop.index }}:
+  cmd.run:
+    - name: tailscale serve --https=443 {{ route.path }} off
+    - onlyif: tailscale serve status | grep -Fq '{{ route.endpoint }}'
+{% endfor %}
+{% else %}
+{{ disabled_id }}_target_guard:
+  test.fail_without_changes:
+    - name: Cleanup for {{ disabled_id }} is restricted to {{ disabled_target }}
+{% endif %}

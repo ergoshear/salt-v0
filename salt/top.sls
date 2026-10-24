@@ -17,22 +17,20 @@ base:
     - match: compound
     - httpd
   'mlops-node-3':
-    - mlops.rx9070.kokoro-fastapi-gpu
+    - mlops.rx9070.studioflow-tts
+    - mlops.rx9070.disabled.kokoro-fastapi-gpu
   'mlops-node-4':
-#    - mlops.r9700.Qwen3.6-35B-A3B-DFlash
     - mlops.r9700.StrataQwen38-Flash-Next
   'mlops-node-5':
     - mlops.storage
   'mlops-node-6':
     - mlops.rtx-4090.StrataQwen38-Flash-Next
-# Alternative llama.cpp states for the same host (do not run alongside Strata):
-#   - mlops.rtx-4090.Qwen38-27B-GSQ-RCO-IQ3_S
-# Alternative 125B MoE for the same RTX 4090 host (requires ~96 GB system RAM):
-#   - mlops.rtx-4090.Qwen38-Flash-Next
-#  'mlops-node-7':
-#    - mlops.halo-395.Ornith-1-5-35B
-#  'mlops-node-9':
-#    - mlops.halo-495.Qwen3-8-27B-GSQ-RCO-IQ3_S
+    - mlops.rtx-4090.disabled.Qwen38-27B-GSQ-RCO-IQ3_S
+    - mlops.rtx-4090.disabled.Qwen38-Flash-Next
+  'mlops-node-7':
+    - mlops.halo-395.disabled.Ornith-1-5-35B
+  'mlops-node-9':
+    - mlops.halo-495.disabled.Qwen3-8-27B-GSQ-RCO-IQ3_S
   'mlops-node-*':
     - match: glob
     - mlops.user

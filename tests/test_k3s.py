@@ -179,6 +179,61 @@ class ConfigurationTests(unittest.TestCase):
         )
         self.assertIn("kokoro_target_guard", compile_sls(state_path, "mlops-node-4"))
 
+    def test_kokoro_disable_state_removes_runtime_and_route_only(self):
+        state_path = ROOT / "salt/mlops/rx9070/disabled/kokoro-fastapi-gpu.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        self.assertEqual(
+            states["rx9070_kokoro_system_stop_1"]["cmd.run"][0]["name"],
+            "systemctl disable --now kokoro-fastapi.service",
+        )
+        self.assertEqual(
+            states["rx9070_kokoro_system_unit_absent_1"]["file.absent"][0]["name"],
+            "/etc/systemd/system/kokoro-fastapi.service",
+        )
+        self.assertEqual(
+            states["rx9070_kokoro_route_absent_1"]["cmd.run"][0]["name"],
+            "tailscale serve --https=443 / off",
+        )
+        self.assertIn(
+            "rx9070_kokoro_target_guard",
+            compile_sls(state_path, "mlops-node-4"),
+        )
+
+    def test_each_deployment_has_a_matching_disabled_state(self):
+        disabled_states = [
+            ("mlops/halo-395/DiffusionGemma-26B", "mlops-node-7"),
+            ("mlops/halo-395/Ornith-1-5-35B", "mlops-node-7"),
+            ("mlops/halo-495/Qwen3-8-27B-GSQ-RCO-IQ3_S", "mlops-node-9"),
+            ("mlops/halo-495/Qwen3.6-35B", "mlops-node-9"),
+            ("mlops/r9700", "mlops-node-4"),
+            ("mlops/r9700/Qwen3.6-35B-A3B-DFlash", "mlops-node-4"),
+            ("mlops/r9700/StrataQwen38-Flash-Next", "mlops-node-4"),
+            ("mlops/rtx-4090/Muse-Glimmer-30b", "mlops-node-6"),
+            ("mlops/rtx-4090/MuseGlimmerQwen38Multi", "mlops-node-6"),
+            ("mlops/rtx-4090/Qwen38-27B-GSQ-RCO-IQ3_S", "mlops-node-6"),
+            ("mlops/rtx-4090/Qwen38-Flash-Next", "mlops-node-6"),
+            ("mlops/rtx-4090/StrataQwen38-Flash-Next", "mlops-node-6"),
+            ("mlops/rx9070/kokoro-fastapi-gpu", "mlops-node-3"),
+            ("mlops/rx9070/studioflow-tts", "mlops-node-3"),
+        ]
+        for deployment, node in disabled_states:
+            deployment_path = ROOT / "salt" / Path(*deployment.split("/"))
+            if deployment_path.name == "r9700":
+                disabled_path = deployment_path / "disabled" / "init.sls"
+            else:
+                disabled_path = (
+                    deployment_path.parent
+                    / "disabled"
+                    / f"{deployment_path.name}.sls"
+                )
+            with self.subTest(deployment=deployment):
+                self.assertTrue(disabled_path.is_file())
+                states = compile_sls(disabled_path, node)
+                self.assertTrue(any(
+                    "file.absent" in declaration
+                    for declaration in states.values()
+                ))
+
     def test_top_file_references_existing_states(self):
         root = ROOT / "salt"
         top = compile_sls(root / "top.sls", "mlops-node-4")
