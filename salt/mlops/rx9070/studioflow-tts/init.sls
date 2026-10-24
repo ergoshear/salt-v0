@@ -89,7 +89,7 @@ studioflow_tts_{{ directory }}_directory:
 
 studioflow_tts_gpu_ready:
   cmd.run:
-    - name: test -c /dev/kfd && test -d /dev/dri
+    - name: test -c /dev/kfd && test -c /dev/dri/renderD128
     - require:
       - pkg: studioflow_tts_packages
 
@@ -188,7 +188,7 @@ studioflow_whisper_unit:
     - mode: '0644'
     - contents: |
         [Unit]
-        Description=StudioFlow Whisper ROCm alignment service
+        Description=StudioFlow Whisper OpenVINO Intel GPU service
         Wants=network-online.target
         After=network-online.target
         After=tailscaled.service
@@ -197,7 +197,7 @@ studioflow_whisper_unit:
         Type=simple
         ExecStartPre=-/usr/bin/podman rm -f studioflow-whisper
         ExecStart=/usr/bin/podman run --rm --name studioflow-whisper \
-          --device=/dev/kfd --device=/dev/dri \
+          --device=/dev/dri/renderD128 \
           --security-opt=label=disable --ipc=host \
           --volume=/var/lib/studioflow-tts/voices:/app/voices:z \
           --volume=/var/lib/studioflow-tts/hf_cache:/app/hf_cache:z \

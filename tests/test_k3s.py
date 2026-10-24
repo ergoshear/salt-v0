@@ -250,6 +250,14 @@ class ConfigurationTests(unittest.TestCase):
                 self.assertIn("--ipc=host", contents)
                 self.assertNotIn("--shm-size=", contents)
 
+    def test_studioflow_whisper_uses_intel_gpu_device(self):
+        state_path = ROOT / "salt/mlops/rx9070/studioflow-tts/init.sls"
+        states = compile_sls(state_path, "mlops-node-3")
+        managed = states["studioflow_whisper_unit"]["file.managed"]
+        contents = next(item["contents"] for item in managed if "contents" in item)
+        self.assertIn("--device=/dev/dri/renderD128", contents)
+        self.assertNotIn("--device=/dev/kfd", contents)
+
     def test_studioflow_disable_state_removes_custom_https_ports(self):
         state_path = ROOT / "salt/mlops/rx9070/disabled/studioflow-tts.sls"
         states = compile_sls(state_path, "mlops-node-3")
