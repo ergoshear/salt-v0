@@ -62,14 +62,17 @@ and advertised tags without logging out or resetting unrelated preferences.
 
 The master provisioner reads the live tailnet policy as JSON, preserves
 existing rules/owners, adds missing ownership for the managed tags, and adds
-a grant between `tag:k8s` nodes for TCP 6443, TCP 10250, and UDP 8472.
+a grant between `tag:k8s` nodes for TCP 6443, TCP 10250, and UDP 8472. It also
+resolves `mlops-node-3` from the Tailscale devices API and maintains dedicated
+IPv4/IPv6 host aliases plus a `tag:k8s` grant for TCP ports 8001–8003.
 Existing `tag:k8s` ownership by `tag:k8s-operator` is preserved.
 It uses the policy ETag to reject concurrent edits rather than overwrite them,
 and saves the initial policy in root-only
 `/etc/salt/tailscale/policy-before-salt.json`. JSON serialization does not
 retain policy comments. The API key owner must be authorized to update policy
-and issue keys bearing both managed tags. Errors fail provisioning explicitly.
-This does not restrict any broader access already granted by existing policy.
+and read device details, as well as issue keys bearing both managed tags.
+Errors fail provisioning explicitly. This does not restrict any broader access
+already granted by existing policy.
 
 ## Kubernetes networking and workers
 

@@ -2,6 +2,7 @@
 import base64
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,12 @@ DIRECTORY = Path("/etc/salt/tailscale")
 TAILNET = "tailb11f97.ts.net"
 CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1"}
 WORKERS = CLUSTER - {"k3s-control-plane-01"}
+INFERENCE_NODE = "mlops-node-3"
+INFERENCE_HOST_ALIASES = {
+    4: "mlops-node-3-studioflow-v4",
+    6: "mlops-node-3-studioflow-v6",
+}
+INFERENCE_PORTS = ["tcp:8001", "tcp:8002", "tcp:8003"]
 GRANT = {
     "src": ["tag:k8s"],
     "dst": ["tag:k8s"],
@@ -59,13 +66,50 @@ def api(key, path, payload=None, method=None, headers=None):
         ) from None
 
 
-def merge_policy(policy):
+def inference_hosts(devices):
+    matches = [
+        device
+        for device in devices.get("devices", [])
+        if any(
+            isinstance(name, str)
+            and name.rstrip(".").split(".")[0] == INFERENCE_NODE
+            for name in (device.get("hostname"), device.get("name"))
+        )
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Expected one Tailscale device named {INFERENCE_NODE}, found {len(matches)}"
+        )
+    hosts = {}
+    for address in matches[0].get("addresses", []):
+        parsed = ipaddress.ip_address(address)
+        alias = INFERENCE_HOST_ALIASES.get(parsed.version)
+        if alias:
+            hosts[alias] = str(parsed)
+    if INFERENCE_HOST_ALIASES[4] not in hosts:
+        raise RuntimeError(f"Tailscale device {INFERENCE_NODE} has no IPv4 address")
+    return hosts
+
+
+def merge_policy(policy, inference_hosts):
     owners = policy.setdefault("tagOwners", {})
     owners.setdefault("tag:salt-managed", ["autogroup:admin"])
     owners.setdefault("tag:k8s", ["autogroup:admin"])
+    hosts = policy.setdefault("hosts", {})
+    for alias in INFERENCE_HOST_ALIASES.values():
+        if alias in inference_hosts:
+            hosts[alias] = inference_hosts[alias]
+        else:
+            hosts.pop(alias, None)
     grants = policy.setdefault("grants", [])
-    if GRANT not in grants:
-        grants.append(GRANT)
+    inference_grant = {
+        "src": ["tag:k8s"],
+        "dst": sorted(inference_hosts),
+        "ip": INFERENCE_PORTS,
+    }
+    for grant in (GRANT, inference_grant):
+        if grant not in grants:
+            grants.append(grant)
     return policy
 
 
@@ -109,9 +153,11 @@ def provision():
         DIRECTORY.chmod(0o710)
         token = read_token()
         restrict_cluster_credentials(token, owner)
+        devices, _ = api(key, "/devices")
+        managed_hosts = inference_hosts(devices)
         policy, headers = api(key, "/acl")
         original = json.dumps(policy, sort_keys=True)
-        merge_policy(policy)
+        merge_policy(policy, managed_hosts)
         if json.dumps(policy, sort_keys=True) != original:
             etag = headers.get("ETag")
             if not etag:
@@ -120,7 +166,7 @@ def provision():
             if not backup.exists():
                 backup.write_text(original + "\n")
             api(key, "/acl", policy, "POST", {"If-Match": etag})
-            print("Added Salt tag ownership and Kubernetes grants; existing rules preserved")
+            print("Reconciled Salt tags, Kubernetes, and node-3 inference grants; existing rules preserved")
         accepted = json.loads(subprocess.check_output(
             ["salt-key", "--out=json", "--list=accepted"], text=True
         ))["minions"]

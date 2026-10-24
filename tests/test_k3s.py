@@ -99,18 +99,50 @@ class PolicyTests(unittest.TestCase):
             {"minions": ["mlops-node-0", "mlops-node-9"]}
             if command[0] == "salt-key" else PROVISION.pwd.getpwuid(os.getuid()).pw_name
         )
-        api.side_effect = lambda key, path, *args: (
-            ({"tagOwners": {
+        policy = {
+            "tagOwners": {
                 "tag:salt-managed": ["autogroup:admin"],
                 "tag:k8s": ["autogroup:admin"],
-            }, "grants": [copy.deepcopy(PROVISION.GRANT)]}, {})
-            if path == "/acl" else ({"key": "tskey-auth-test"}, {})
-        )
+            },
+            "grants": [copy.deepcopy(PROVISION.GRANT)],
+        }
+
+        def api_response(key, path, payload=None, method=None, headers=None):
+            if path == "/devices":
+                return ({
+                    "devices": [{
+                        "hostname": "mlops-node-3",
+                        "addresses": [
+                            "100.104.240.113", "fd7a:115c:a1e0::f2f:f072",
+                        ],
+                    }],
+                }, {})
+            if path == "/acl" and method == "POST":
+                policy.clear()
+                policy.update(copy.deepcopy(payload))
+                return ({}, {})
+            if path == "/acl":
+                return (copy.deepcopy(policy), {"ETag": "test-etag"})
+            return ({"key": "tskey-auth-test"}, {})
+
+        api.side_effect = api_response
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "api-key").write_text("test-api-key")
             with patch.object(PROVISION, "DIRECTORY", path):
                 PROVISION.provision()
+                self.assertEqual(policy["hosts"], {
+                    "mlops-node-3-studioflow-v4": "100.104.240.113",
+                    "mlops-node-3-studioflow-v6": "fd7a:115c:a1e0::f2f:f072",
+                })
+                self.assertIn({
+                    "src": ["tag:k8s"],
+                    "dst": [
+                        "mlops-node-3-studioflow-v4",
+                        "mlops-node-3-studioflow-v6",
+                    ],
+                    "ip": ["tcp:8001", "tcp:8002", "tcp:8003"],
+                }, policy["grants"])
                 root = path / "pillar" / "hosts"
                 self.assertEqual(
                     {file.parent.name for file in root.glob("*/TS_API_KEY")},
@@ -125,7 +157,7 @@ class PolicyTests(unittest.TestCase):
                     self.assertEqual(secret.stat().st_mode & 0o777, 0o600)
                 calls = api.call_count
                 PROVISION.provision()
-                self.assertEqual(api.call_count, calls + 1)
+                self.assertEqual(api.call_count, calls + 2)
 
     @patch.object(PROVISION, "urlopen")
     def test_api_error_preserves_actionable_message_without_credentials(self, open_url):
@@ -143,14 +175,37 @@ class PolicyTests(unittest.TestCase):
             "ssh": [{"action": "check", "src": ["autogroup:member"]}],
             "grants": [{"src": ["tag:existing"], "dst": ["tag:existing"], "ip": ["*"]}],
         }
+        managed_hosts = {
+            "mlops-node-3-studioflow-v4": "100.104.240.113",
+            "mlops-node-3-studioflow-v6": "fd7a:115c:a1e0::f2f:f072",
+        }
         original = copy.deepcopy(policy)
-        merged = PROVISION.merge_policy(policy)
+        merged = PROVISION.merge_policy(policy, managed_hosts)
         self.assertEqual(merged["tagOwners"]["tag:k8s"], ["tag:k8s-operator"])
         self.assertEqual(merged["acls"], original["acls"])
         self.assertEqual(merged["ssh"], original["ssh"])
         self.assertEqual(merged["grants"][0], original["grants"][0])
         self.assertIn(PROVISION.GRANT, merged["grants"])
-        self.assertEqual(PROVISION.merge_policy(copy.deepcopy(merged)), merged)
+        self.assertEqual(merged["hosts"], managed_hosts)
+        self.assertIn({
+            "src": ["tag:k8s"],
+            "dst": sorted(managed_hosts),
+            "ip": ["tcp:8001", "tcp:8002", "tcp:8003"],
+        }, merged["grants"])
+        self.assertEqual(
+            PROVISION.merge_policy(copy.deepcopy(merged), managed_hosts), merged,
+        )
+        self.assertEqual(
+            PROVISION.inference_hosts({"devices": [{
+                "hostname": "mlops-node-3",
+                "addresses": [
+                    "100.104.240.113", "fd7a:115c:a1e0::f2f:f072",
+                ],
+            }]}),
+            managed_hosts,
+        )
+        with self.assertRaisesRegex(RuntimeError, "found 0"):
+            PROVISION.inference_hosts({"devices": []})
 
 class ConfigurationTests(unittest.TestCase):
     def test_r9700_compatibility_entry_preserves_moved_model_state(self):
