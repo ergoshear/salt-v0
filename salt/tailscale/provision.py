@@ -158,6 +158,10 @@ def provision():
             ["systemctl", "show", "salt-master", "--property=User", "--value"],
             text=True,
         ).strip() or "root"
+        if user == "root":
+            from salt.config import master_config
+
+            user = master_config("/etc/salt").get("user") or "root"
         owner = pwd.getpwnam(user)
         os.chown(DIRECTORY, -1, owner.pw_gid)
         DIRECTORY.chmod(0o710)

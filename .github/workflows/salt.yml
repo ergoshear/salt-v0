@@ -128,6 +128,9 @@ jobs:
               ["systemctl", "show", "salt-master", "--property=User", "--value"],
               text=True,
           ).strip() or "root"
+          if service_user == "root":
+              from salt.config import master_config
+              service_user = master_config("/etc/salt").get("user") or "root"
           account = pwd.getpwnam(service_user)
           pillar = Path("/etc/salt/tailscale/pillar")
           root = pillar / "hosts"
