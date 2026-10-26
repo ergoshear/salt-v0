@@ -143,6 +143,7 @@ class PolicyTests(unittest.TestCase):
                     ],
                     "ip": ["tcp:8001", "tcp:8002", "tcp:8003"],
                 }, policy["grants"])
+                self.assertIn(PROVISION.SSH_RULE, policy["ssh"])
                 root = path / "pillar" / "hosts"
                 self.assertEqual(
                     {file.parent.name for file in root.glob("*/TS_API_KEY")},
@@ -181,9 +182,16 @@ class PolicyTests(unittest.TestCase):
         }
         original = copy.deepcopy(policy)
         merged = PROVISION.merge_policy(policy, managed_hosts)
+        self.assertEqual(PROVISION.SSH_RULE, {
+            "action": "check",
+            "src": ["christopher@agilityqa.com"],
+            "dst": ["tag:salt-managed"],
+            "users": ["autogroup:nonroot"],
+        })
         self.assertEqual(merged["tagOwners"]["tag:k8s"], ["tag:k8s-operator"])
         self.assertEqual(merged["acls"], original["acls"])
-        self.assertEqual(merged["ssh"], original["ssh"])
+        self.assertIn(original["ssh"][0], merged["ssh"])
+        self.assertIn(PROVISION.SSH_RULE, merged["ssh"])
         self.assertEqual(merged["grants"][0], original["grants"][0])
         self.assertIn(PROVISION.GRANT, merged["grants"])
         self.assertEqual(merged["hosts"], managed_hosts)
@@ -208,6 +216,23 @@ class PolicyTests(unittest.TestCase):
             PROVISION.inference_hosts({"devices": []})
 
 class ConfigurationTests(unittest.TestCase):
+    def test_mlops_node_five_is_a_supported_k3s_agent(self):
+        agent = compile_sls(
+            ROOT / "salt/k3s/agent/init.sls",
+            "mlops-node-5",
+            {"K3S_AGENT_TOKEN": "test-agent-token"},
+        )
+        self.assertIn("k3s-agent-config", agent)
+        upgrade = compile_sls(
+            ROOT / "salt/k3s/upgrade.sls",
+            "mlops-node-5",
+            {"K3S_UPGRADE_VERSION": "v1.37.1+k3s1"},
+        )
+        self.assertEqual(
+            upgrade["k3s-upgrade-install"]["cmd.run"][1]["env"][-1],
+            {"INSTALL_K3S_EXEC": "agent"},
+        )
+
     def test_k3s_installers_only_run_when_binary_is_missing(self):
         control_plane = compile_sls(
             ROOT / "salt/k3s/control-plane/init.sls",
@@ -656,18 +681,61 @@ class EnrollmentTests(unittest.TestCase):
         run.return_value = json.dumps({
             "Hostname": "mlops-node-0",
             "AdvertiseTags": ["tag:k8s", "tag:salt-managed"],
+            "RunSSH": True,
         })
         self.assertFalse(NODE.enroll("mlops-node-0"))
         execute.assert_not_called()
 
     @patch.object(NODE.subprocess, "run")
+    @patch.object(NODE, "run")
+    @patch.object(NODE, "status", return_value={"BackendState": "Running"})
+    def test_enrolled_node_enables_tailscale_ssh(self, status, run, execute):
+        run.side_effect = [
+            json.dumps({
+                "Hostname": "mlops-node-0",
+                "AdvertiseTags": ["tag:k8s", "tag:salt-managed"],
+                "RunSSH": False,
+            }),
+            json.dumps({"RunSSH": True}),
+        ]
+        self.assertTrue(NODE.enroll("mlops-node-0"))
+        self.assertEqual(execute.call_args.args[0], ["tailscale", "set", "--ssh"])
+
+    @patch.object(NODE.subprocess, "run")
+    @patch.object(NODE, "run")
+    @patch.object(NODE, "status", return_value={"BackendState": "Running"})
+    def test_tag_reauthentication_also_enables_tailscale_ssh(
+        self, status, run, execute
+    ):
+        run.side_effect = [
+            json.dumps({
+                "Hostname": "mlops-node-0",
+                "AdvertiseTags": ["tag:old"],
+                "RunSSH": False,
+            }),
+            json.dumps({
+                "Hostname": "mlops-node-0",
+                "AdvertiseTags": ["tag:k8s", "tag:salt-managed"],
+                "RunSSH": True,
+            }),
+        ]
+        self.assertTrue(NODE.enroll("mlops-node-0"))
+        command = execute.call_args.args[0]
+        self.assertIn("--force-reauth", command)
+        self.assertIn("--ssh", command)
+
+    @patch.object(NODE.subprocess, "run")
+    @patch.object(NODE, "run", return_value=json.dumps({"RunSSH": True}))
     @patch.object(NODE, "status")
-    def test_new_node_uses_key_file_and_correct_tags(self, status, execute):
+    def test_new_node_uses_key_file_correct_tags_and_tailscale_ssh(
+        self, status, run, execute
+    ):
         status.side_effect = [{"BackendState": "NeedsLogin"}, {"BackendState": "Running"}]
         self.assertTrue(NODE.enroll("mlops-node-9"))
         command = execute.call_args.args[0]
         self.assertIn("--auth-key=file:/etc/tailscale/salt-authkey", command)
         self.assertIn("--advertise-tags=tag:salt-managed", command)
+        self.assertIn("--ssh", command)
         self.assertFalse(any("operator" in arg for arg in command))
 
 

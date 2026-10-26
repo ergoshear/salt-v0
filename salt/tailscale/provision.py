@@ -29,6 +29,12 @@ GRANT = {
     "dst": ["tag:k8s"],
     "ip": ["tcp:6443", "tcp:10250", "udp:8472"],
 }
+SSH_RULE = {
+    "action": "check",
+    "src": ["christopher@agilityqa.com"],
+    "dst": ["tag:salt-managed"],
+    "users": ["autogroup:nonroot"],
+}
 TOKEN_FILE = Path(
     "/var/cache/salt/master/minions/"
     "k3s-control-plane-01/files/k3s-control-plane-01/k3s-agent-token"
@@ -110,6 +116,9 @@ def merge_policy(policy, inference_hosts):
     for grant in (GRANT, inference_grant):
         if grant not in grants:
             grants.append(grant)
+    ssh_rules = policy.setdefault("ssh", [])
+    if SSH_RULE not in ssh_rules:
+        ssh_rules.append(SSH_RULE)
     return policy
 
 

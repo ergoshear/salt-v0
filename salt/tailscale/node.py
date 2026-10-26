@@ -23,11 +23,15 @@ def enroll(node):
     command = [
         "tailscale", "up", "--auth-key=file:/etc/tailscale/salt-authkey",
         "--hostname=" + node, "--advertise-tags=" + ",".join(tags),
+        "--ssh",
     ]
     if current["BackendState"] != "Running":
         subprocess.run([*command, "--timeout=60s"], check=True, stdout=subprocess.PIPE, text=True)
         if status()["BackendState"] != "Running":
             raise RuntimeError("Tailscale enrollment did not reach Running")
+        preferences = json.loads(run("tailscale", "debug", "prefs"))
+        if preferences.get("RunSSH") is not True:
+            raise RuntimeError("Tailscale SSH did not enable during enrollment")
         return True
     preferences = json.loads(run("tailscale", "debug", "prefs"))
     changed = False
@@ -42,8 +46,21 @@ def enroll(node):
         # change them. Re-authenticate with the managed key and desired tags.
         subprocess.run([*command, "--force-reauth"], check=True, stdout=subprocess.PIPE, text=True)
         preferences = json.loads(run("tailscale", "debug", "prefs"))
-        if preferences.get("Hostname") != node or sorted(preferences.get("AdvertiseTags") or []) != sorted(tags):
+        if (
+            preferences.get("Hostname") != node
+            or sorted(preferences.get("AdvertiseTags") or []) != sorted(tags)
+            or preferences.get("RunSSH") is not True
+        ):
             raise RuntimeError("Tailscale preferences did not converge after re-authentication")
+        changed = True
+    elif preferences.get("RunSSH") is not True:
+        subprocess.run(
+            ["tailscale", "set", "--ssh"],
+            check=True, stdout=subprocess.PIPE, text=True,
+        )
+        preferences = json.loads(run("tailscale", "debug", "prefs"))
+        if preferences.get("RunSSH") is not True:
+            raise RuntimeError("Tailscale SSH did not enable")
         changed = True
     return changed
 

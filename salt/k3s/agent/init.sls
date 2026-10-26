@@ -1,9 +1,9 @@
 {% set node = grains['id'] %}
 {% set token = salt['pillar.get']('K3S_AGENT_TOKEN', '') %}
-{% if node not in ['mlops-node-0', 'mlops-node-1'] or not token %}
+{% if node not in ['mlops-node-0', 'mlops-node-1', 'mlops-node-5'] or not token %}
 k3s-agent-prerequisites:
   test.fail_without_changes:
-    - name: k3s agents are restricted to mlops-node-0 and mlops-node-1 and require K3S_AGENT_TOKEN pillar
+    - name: k3s agents are restricted to mlops-node-0, mlops-node-1, and mlops-node-5 and require K3S_AGENT_TOKEN pillar
 {% else %}
 include:
   - k3s.network

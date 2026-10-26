@@ -50,6 +50,7 @@ stable Fedora package, enables `tailscaled`, and enrolls the machine in
 `tailb11f97.ts.net` using its Salt ID as its Tailscale hostname.
 Existing authenticated nodes retain their identity; Salt converges hostname
 and advertised tags without logging out or resetting unrelated preferences.
+It also enables Tailscale SSH on every Salt-managed host.
 
 - Every minion receives `tag:salt-managed`.
 - Only `k3s-control-plane-01`, `mlops-node-0`, and `mlops-node-1` also receive
@@ -68,6 +69,8 @@ existing rules/owners, adds missing ownership for the managed tags, and adds
 a grant between `tag:k8s` nodes for TCP 6443, TCP 10250, and UDP 8472. It also
 resolves `mlops-node-3` from the Tailscale devices API and maintains dedicated
 IPv4/IPv6 host aliases plus a `tag:k8s` grant for TCP ports 8001–8003.
+It adds a check-mode Tailscale SSH rule for `christopher@agilityqa.com` to
+`tag:salt-managed` hosts, limited to non-root local users.
 Existing `tag:k8s` ownership by `tag:k8s-operator` is preserved.
 It uses the policy ETag to reject concurrent edits rather than overwrite them,
 and saves the initial policy in root-only

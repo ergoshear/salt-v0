@@ -9,9 +9,8 @@ base:
     - salt.master
   'k3s-control-plane-01':
     - k3s.control-plane
-  'mlops-node-0':
-    - k3s.agent
-  'mlops-node-1':
+  'L@mlops-node-0,mlops-node-1,mlops-node-5':
+    - match: compound
     - k3s.agent
   'L@mlops-node-3,mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
     - match: compound
