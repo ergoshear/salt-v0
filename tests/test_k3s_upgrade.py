@@ -144,11 +144,35 @@ class K3sUpgradeTests(unittest.TestCase):
         )
         self.assertIn("cp -a --", recovery_command)
         self.assertIn('rm -- "$file"', recovery_command)
+        self.assertIn("journalctl -u k3s", recovery_command)
+        self.assertIn("cred/passwd newer than datastore", recovery_command)
+        self.assertIn("K3s is active; skipping passwd recovery", recovery_command)
+        self.assertTrue(any(
+            "stateful" in argument
+            for argument in server["k3s-passwd-recovery"]["cmd.run"]
+        ))
         self.assertIn("systemctl start k3s", recovery_command)
         self.assertIn(
             "test.fail_without_changes",
             agent["k3s-passwd-recovery-prerequisites"],
         )
+
+    def test_normal_workflow_recovers_before_deploying_k3s(self):
+        workflow = yaml.load(
+            (ROOT / ".github/workflows/salt.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        steps = workflow["jobs"]["salt-apply"]["steps"]
+        recovery_step = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Recover K3s passwd if its startup guard fired"
+        )
+        deploy_step = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Enroll minions and deploy Kubernetes nodes"
+        )
+        self.assertLess(recovery_step, deploy_step)
+        self.assertIn("--recover-passwd-only", steps[recovery_step]["run"])
 
     def test_manual_workflow_upgrade_is_opt_in_and_uses_salt_master(self):
         workflow = yaml.load(

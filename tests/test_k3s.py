@@ -208,6 +208,25 @@ class PolicyTests(unittest.TestCase):
             PROVISION.inference_hosts({"devices": []})
 
 class ConfigurationTests(unittest.TestCase):
+    def test_k3s_installers_only_run_when_binary_is_missing(self):
+        control_plane = compile_sls(
+            ROOT / "salt/k3s/control-plane/init.sls",
+            "k3s-control-plane-01",
+        )
+        agent = compile_sls(
+            ROOT / "salt/k3s/agent/init.sls",
+            "mlops-node-0",
+            {"K3S_AGENT_TOKEN": "test-agent-token"},
+        )
+        self.assertEqual(
+            control_plane["k3s-install"]["cmd.run"][1]["unless"],
+            "test -x /usr/local/bin/k3s",
+        )
+        self.assertEqual(
+            agent["k3s-agent-install"]["cmd.run"][2]["unless"],
+            "test -x /usr/local/bin/k3s",
+        )
+
     def test_tailscale_nodes_track_latest_package_and_restart_after_upgrade(self):
         states = render(
             "tailscale",
@@ -569,6 +588,16 @@ class ConfigurationTests(unittest.TestCase):
 
 
 class EnrollmentTests(unittest.TestCase):
+    @patch.object(DEPLOY, "salt")
+    def test_passwd_recovery_targets_only_k3s_control_plane(self, salt):
+        DEPLOY.recover_passwd()
+        salt.assert_called_once_with(
+            ["k3s-control-plane-01"],
+            "state.apply",
+            "k3s.passwd_recovery",
+            "queue=True",
+        )
+
     @patch.object(NODE.subprocess, "run")
     @patch.object(NODE, "run")
     def test_firewall_uses_actual_interface_zone_and_checks_both_scopes(self, run, execute):

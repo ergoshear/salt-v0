@@ -185,6 +185,9 @@ jobs:
       - name: Install Hugging Face credentials on model downloaders
         run: sudo -n salt --timeout=300 -L 'mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9' state.apply mlops.huggingface queue=True
 
+      - name: Recover K3s passwd if its startup guard fired
+        run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py" --recover-passwd-only
+
       - name: Enroll minions and deploy Kubernetes nodes
         run: sudo -n python3 "$GITHUB_WORKSPACE/salt/tailscale/deploy.py"
 

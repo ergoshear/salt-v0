@@ -54,7 +54,7 @@ k3s-agent-install:
     - name: sh /usr/local/src/k3s-install.sh
     - env:
       - INSTALL_K3S_EXEC: agent
-    - unless: test -x /usr/local/bin/k3s && test -f /etc/systemd/system/k3s-agent.service
+    - unless: test -x /usr/local/bin/k3s
     - require:
       - file: k3s-agent-installer
       - file: k3s-agent-config

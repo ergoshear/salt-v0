@@ -74,6 +74,15 @@ def deploy():
     )
 
 
+def recover_passwd():
+    salt(
+        ["k3s-control-plane-01"],
+        "state.apply",
+        "k3s.passwd_recovery",
+        "queue=True",
+    )
+
+
 def check_cluster(command, description):
     result = subprocess.run([
         "salt", "--static", "--out=json", "--timeout=600", "k3s-control-plane-01",
@@ -89,4 +98,16 @@ def check_cluster(command, description):
 
 
 if __name__ == "__main__":
-    deploy()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--recover-passwd-only",
+        action="store_true",
+        help="Recover the K3s control-plane passwd file only if its startup guard fired",
+    )
+    arguments = parser.parse_args()
+    if arguments.recover_passwd_only:
+        recover_passwd()
+    else:
+        deploy()

@@ -17,10 +17,13 @@ first followed by each worker individually. It requires all three Kubernetes
 nodes to be Ready, waits for each node to return Ready on the target version,
 and refuses invalid tags, unsupported minor-version skips, or downgrades. If
 every node already runs the selected release, it exits without restarting K3s.
-For the `cred/passwd newer than datastore` startup guard, enable
-`recover_k3s_passwd` alongside `update_k3s` to back up and remove only the
-control-plane `server/cred/passwd` file, restart K3s, and wait for all nodes to
-be Ready before continuing the upgrade.
+Before the normal Kubernetes deployment step, the workflow checks for the
+`cred/passwd newer than datastore` startup failure. It backs up and removes
+only the control-plane `server/cred/passwd` file when K3s is not active and the
+current boot's journal contains that exact failure, then restarts K3s. Healthy
+clusters are left running; unexpected failures are not automatically modified.
+For a manual K3s upgrade, `recover_k3s_passwd` can still be enabled alongside
+`update_k3s` to run the same guarded recovery before the version upgrade.
 
 The normal apply writes model credentials as private, master-owned file-tree pillars for only
 `mlops-node-4`, `mlops-node-6`, `mlops-node-7`, and `mlops-node-9`, checks that
