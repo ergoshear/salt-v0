@@ -3,6 +3,12 @@ salt-master-tailscale-directory:
     - name: /etc/salt/tailscale
     - user: root
 
+salt-master-pillar-directory:
+  file.directory:
+    - name: /etc/salt/tailscale/pillar
+    - require:
+      - file: salt-master-tailscale-directory
+
 salt-master-tailscale-provisioner:
   file.managed:
     - name: /usr/local/sbin/salt-tailscale-provision
@@ -102,6 +108,7 @@ salt-master-tailscale-credentials:
     - name: /usr/bin/python3 /usr/local/sbin/salt-tailscale-provision
     - require:
       - file: salt-master-tailscale-directory
+      - file: salt-master-pillar-directory
       - file: salt-master-tailscale-provisioner
       - file: salt-master-config
 
