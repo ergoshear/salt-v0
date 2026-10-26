@@ -53,7 +53,8 @@ and advertised tags without logging out or resetting unrelated preferences.
 It also enables Tailscale SSH on every Salt-managed host.
 
 - Every minion receives `tag:salt-managed`.
-- Only `k3s-control-plane-01`, `mlops-node-0`, and `mlops-node-1` also receive
+- Only `k3s-control-plane-01`, `mlops-node-0`, `mlops-node-1`, and
+  `mlops-node-5` also receive
   `tag:k8s`. Ordinary minions never receive `tag:k8s-operator`.
 - Salt's built-in `file_tree` external pillar exposes `TS_API_KEY` only to `salt-master-01`.
   Each minion receives only its own `TAILSCALE_AUTH_KEY`, not the API key.
@@ -82,7 +83,8 @@ already granted by existing policy.
 
 ## Kubernetes networking and workers
 
-Only the exact IDs `mlops-node-0` and `mlops-node-1` match `k3s.agent`.
+Only the exact IDs `mlops-node-0`, `mlops-node-1`, and `mlops-node-5` match
+`k3s.agent`.
 Explicitly applying the agent state to any other minion fails without
 installing an agent. The root-only agent configuration consumes `K3S_TOKEN`;
 secret file diffs are suppressed.

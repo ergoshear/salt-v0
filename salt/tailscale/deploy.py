@@ -4,7 +4,7 @@ import subprocess
 import time
 
 
-CLUSTER = ["k3s-control-plane-01", "mlops-node-0", "mlops-node-1"]
+CLUSTER = ["k3s-control-plane-01", "mlops-node-0", "mlops-node-1", "mlops-node-5"]
 
 
 def salt(nodes, function, *arguments):
@@ -66,8 +66,9 @@ def deploy():
     salt(CLUSTER[1:], "saltutil.refresh_pillar", "wait=True")
     salt(CLUSTER[1:], "state.apply", "k3s.agent", "queue=True")
     check_cluster(
-        "k3s kubectl wait --for=condition=Ready node/mlops-node-0 node/mlops-node-1 --timeout=180s",
-        "Both Kubernetes workers are Ready",
+        "k3s kubectl wait --for=condition=Ready "
+        "node/mlops-node-0 node/mlops-node-1 node/mlops-node-5 --timeout=180s",
+        "All Kubernetes workers are Ready",
     )
     check_cluster(
         "/usr/bin/python3 /usr/local/sbin/salt-k3s-verify",

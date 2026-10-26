@@ -9,10 +9,14 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 CHANNEL_URL = "https://update.k3s.io/v1-release/channels/stable"
-CLUSTER_MINIONS = ["k3s-control-plane-01", "mlops-node-0", "mlops-node-1"]
+CLUSTER_MINIONS = ["k3s-control-plane-01", "mlops-node-0", "mlops-node-1", "mlops-node-5"]
 CONTROL_PLANE = "k3s-control-plane-01"
 CONTROL_PLANE_NODE = "k3s.ergoshear.dev"
-AGENT_NODES = [("mlops-node-0", "mlops-node-0"), ("mlops-node-1", "mlops-node-1")]
+AGENT_NODES = [
+    ("mlops-node-0", "mlops-node-0"),
+    ("mlops-node-1", "mlops-node-1"),
+    ("mlops-node-5", "mlops-node-5"),
+]
 EXPECTED_NODES = {CONTROL_PLANE_NODE, *(node for _, node in AGENT_NODES)}
 VERSION_PATTERN = re.compile(r"v(\d+)\.(\d+)\.(\d+)\+k3s(\d+)")
 REDIRECT_CODES = {301, 302, 303, 307, 308}

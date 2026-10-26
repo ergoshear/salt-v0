@@ -28,7 +28,7 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual(list(hosts.glob("*/K3S_TOKEN")), [])
             self.assertEqual(
                 {p.parent.name for p in hosts.glob("*/K3S_AGENT_TOKEN")},
-                {"mlops-node-0", "mlops-node-1"},
+                {"mlops-node-0", "mlops-node-1", "mlops-node-5"},
             )
             self.assertTrue(all(
                 p.read_text() == "new-agent-token" for p in hosts.glob("*/K3S_AGENT_TOKEN")

@@ -658,7 +658,7 @@ class EnrollmentTests(unittest.TestCase):
     def test_network_config_refuses_unenrolled_or_non_cluster_nodes(self, status):
         with self.assertRaisesRegex(RuntimeError, "Running"):
             NODE.configure("mlops-node-0")
-        with self.assertRaisesRegex(ValueError, "three Kubernetes"):
+        with self.assertRaisesRegex(ValueError, "four Kubernetes"):
             NODE.configure("mlops-node-9")
 
     @patch.object(DEPLOY.subprocess, "run")

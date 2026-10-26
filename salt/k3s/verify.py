@@ -5,7 +5,7 @@ import time
 import uuid
 
 
-WORKERS = ["mlops-node-0", "mlops-node-1"]
+WORKERS = ["mlops-node-0", "mlops-node-1", "mlops-node-5"]
 
 
 def kubectl(*arguments, data=None):
@@ -80,7 +80,7 @@ def verify():
     kubectl("create", "namespace", namespace)
     try:
         manifest = {"apiVersion": "v1", "kind": "List",
-                    "items": [probe(namespace, index) for index in range(2)]}
+                    "items": [probe(namespace, index) for index in range(len(WORKERS))]}
         kubectl("apply", "-f", "-", data=json.dumps(manifest))
         kubectl("-n", namespace, "wait", "--for=condition=Ready", "pod",
                 "--all", "--timeout=180s")
@@ -88,7 +88,7 @@ def verify():
         addresses = {pod["metadata"]["name"]: pod["status"]["podIP"] for pod in pods}
         for index, worker in enumerate(WORKERS):
             prefix = ["-n", namespace, "exec", f"probe-{index}", "--"]
-            peer = addresses[f"probe-{1 - index}"]
+            peer = addresses[f"probe-{(index + 1) % len(WORKERS)}"]
             result = kubectl(*prefix, "wget", "-qO-", "-T", "10", f"http://{peer}:8080")
             if result.strip() != "ok":
                 raise RuntimeError(f"{worker}: cross-worker HTTP response was invalid")

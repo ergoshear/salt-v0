@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 DIRECTORY = Path("/etc/salt/tailscale")
 TAILNET = "tailb11f97.ts.net"
-CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1"}
+CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1", "mlops-node-5"}
 WORKERS = CLUSTER - {"k3s-control-plane-01"}
 INFERENCE_NODE = "mlops-node-3"
 INFERENCE_HOST_ALIASES = {

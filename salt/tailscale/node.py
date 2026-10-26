@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1"}
+CLUSTER = {"k3s-control-plane-01", "mlops-node-0", "mlops-node-1", "mlops-node-5"}
 
 
 def run(*args):
@@ -67,7 +67,7 @@ def enroll(node):
 
 def configure(node):
     if node not in CLUSTER:
-        raise ValueError("Only the three Kubernetes nodes can configure k3s networking")
+        raise ValueError("Only the four Kubernetes nodes can configure k3s networking")
     current = status()
     if current["BackendState"] != "Running":
         raise RuntimeError("Tailscale must be Running before configuring k3s")

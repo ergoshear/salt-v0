@@ -64,6 +64,7 @@ class K3sUpgradeTests(unittest.TestCase):
             "k3s.ergoshear.dev": {"ready": True, "version": "v1.36.4+k3s1"},
             "mlops-node-0": {"ready": True, "version": "v1.36.4+k3s1"},
             "mlops-node-1": {"ready": True, "version": "v1.36.5+k3s1"},
+            "mlops-node-5": {"ready": True, "version": "v1.36.5+k3s1"},
         }
         self.assertEqual(
             UPGRADE.upgrade_plan(nodes, "v1.36.5+k3s1"),
@@ -91,6 +92,7 @@ class K3sUpgradeTests(unittest.TestCase):
                 ("k3s-control-plane-01", "k3s.ergoshear.dev"),
                 ("mlops-node-0", "mlops-node-0"),
                 ("mlops-node-1", "mlops-node-1"),
+                ("mlops-node-5", "mlops-node-5"),
             ],
         )
 

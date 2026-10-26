@@ -294,7 +294,7 @@ jobs:
         if: always()
         run: |
           sudo -n salt --static --out=json \
-            -L 'k3s-control-plane-01,mlops-node-0,mlops-node-1' \
+            -L 'k3s-control-plane-01,mlops-node-0,mlops-node-1,mlops-node-5' \
             cmd.run '
               unit=k3s
               if ! systemctl cat "$unit" >/dev/null 2>&1; then unit=k3s-agent; fi
