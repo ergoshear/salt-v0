@@ -12,7 +12,7 @@ tailscale-repository:
     - skip_verify: True
 
 tailscale-package:
-  pkg.installed:
+  pkg.latest:
     - name: tailscale
     - require:
       - file: tailscale-repository
@@ -22,6 +22,8 @@ tailscale-service:
     - name: tailscaled
     - enable: True
     - require:
+      - pkg: tailscale-package
+    - watch:
       - pkg: tailscale-package
 
 tailscale-auth-key:

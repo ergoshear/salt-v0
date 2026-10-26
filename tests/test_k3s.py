@@ -208,6 +208,21 @@ class PolicyTests(unittest.TestCase):
             PROVISION.inference_hosts({"devices": []})
 
 class ConfigurationTests(unittest.TestCase):
+    def test_tailscale_nodes_track_latest_package_and_restart_after_upgrade(self):
+        states = render(
+            "tailscale",
+            "mlops-node-3",
+            {"TAILSCALE_AUTH_KEY": "test-auth-key"},
+        )
+        self.assertEqual(
+            states["tailscale-package"]["pkg.latest"],
+            [{"name": "tailscale"}, {"require": [{"file": "tailscale-repository"}]}],
+        )
+        self.assertIn(
+            {"pkg": "tailscale-package"},
+            states["tailscale-service"]["service.running"][-1]["watch"],
+        )
+
     def test_r9700_compatibility_entry_preserves_moved_model_state(self):
         self.assertEqual(
             render("mlops/r9700", "mlops-node-4"),
