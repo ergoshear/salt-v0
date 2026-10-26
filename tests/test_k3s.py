@@ -95,9 +95,10 @@ class PolicyTests(unittest.TestCase):
     @patch.object(PROVISION.subprocess, "check_output")
     @patch.object(PROVISION, "api")
     def test_provision_scopes_credentials_and_is_idempotent(self, api, output):
-        output.side_effect = lambda command, **kwargs: json.dumps(
-            {"minions": ["mlops-node-0", "mlops-node-9"]}
-            if command[0] == "salt-key" else PROVISION.pwd.getpwuid(os.getuid()).pw_name
+        output.side_effect = lambda command, **kwargs: (
+            json.dumps({"minions": ["mlops-node-0", "mlops-node-9"]})
+            if command[0] == "salt-key"
+            else PROVISION.pwd.getpwuid(os.getuid()).pw_name
         )
         policy = {
             "tagOwners": {

@@ -154,9 +154,10 @@ def provision():
         key = (DIRECTORY / "api-key").read_text().strip()
         if not key:
             raise ValueError("TS_API_KEY is empty")
-        user = json.loads(subprocess.check_output(
-            ["salt-run", "--out=json", "salt.cmd", "config.get", "user"], text=True
-        ))
+        user = subprocess.check_output(
+            ["systemctl", "show", "salt-master", "--property=User", "--value"],
+            text=True,
+        ).strip() or "root"
         owner = pwd.getpwnam(user)
         os.chown(DIRECTORY, -1, owner.pw_gid)
         DIRECTORY.chmod(0o710)

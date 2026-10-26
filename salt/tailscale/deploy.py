@@ -51,7 +51,8 @@ def deploy():
         raise RuntimeError(f"Required Kubernetes minions are not accepted: {sorted(missing)}")
     for attempt in range(30):
         ready = subprocess.run(
-            ["salt-run", "--out=json", "manage.status"], capture_output=True, text=True
+            ["salt-run", "--log-level=error", "--out=json", "manage.status"],
+            capture_output=True, text=True,
         )
         if ready.returncode == 0:
             break

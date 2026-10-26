@@ -124,10 +124,10 @@ jobs:
           for name, value in (("LITELLM_BACKEND_KEY", key), ("HUGGING_FACE_ACCESS_KEY", hf_key)):
               if not value or any(c in value for c in "\r\n"):
                   raise ValueError(f"{name} must be a nonempty single-line value")
-          service_user = json.loads(subprocess.check_output(
-              ["salt-run", "--out=json", "salt.cmd", "config.get", "user"],
+          service_user = subprocess.check_output(
+              ["systemctl", "show", "salt-master", "--property=User", "--value"],
               text=True,
-          ))
+          ).strip() or "root"
           account = pwd.getpwnam(service_user)
           pillar = Path("/etc/salt/tailscale/pillar")
           root = pillar / "hosts"
@@ -156,8 +156,8 @@ jobs:
             --pillar-root=/srv/actions-runner/_work/salt/salt/pillar \
             state.apply salt.master queue=True --retcode-passthrough
           sudo -n systemctl show salt-master --property=User --property=ActiveState
-          sudo -n salt-run --out=json salt.cmd config.get ext_pillar
-          sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
+          sudo -n salt-run --log-level=error --out=json salt.cmd config.get ext_pillar
+          sudo -n salt-run --log-level=error --out=json pillar.show_pillar minion=mlops-node-0 |
             python3 -c 'import json, sys; data = json.load(sys.stdin); assert isinstance(data, dict), "Pillar compilation failed"; print("Master-compiled pillar keys:", sorted(data)); assert "TAILSCALE_AUTH_KEY" in data, "Enrollment pillar is missing"'
 
       - name: Verify GPU minions are reachable
@@ -170,10 +170,10 @@ jobs:
       - name: Verify model credentials are scoped to GPU minions
         run: |
           for node in mlops-node-4 mlops-node-6 mlops-node-7 mlops-node-9; do
-            sudo -n salt-run --out=json pillar.show_pillar minion="$node" |
+            sudo -n salt-run --log-level=error --out=json pillar.show_pillar minion="$node" |
               python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("INFERENCE_BACKEND_KEY") and d.get("HUGGING_FACE_ACCESS_KEY"), "Model credential pillar missing"; print("Model credential pillars present for authorized GPU minion")'
           done
-          sudo -n salt-run --out=json pillar.show_pillar minion=mlops-node-0 |
+          sudo -n salt-run --log-level=error --out=json pillar.show_pillar minion=mlops-node-0 |
             python3 -c 'import json,sys; d=json.load(sys.stdin); assert "INFERENCE_BACKEND_KEY" not in d and "HUGGING_FACE_ACCESS_KEY" not in d, "Model credential pillar leaked to unauthorized minion"; print("Model credential pillars absent from non-GPU minion")'
 
       - name: Apply inference backend state to GPU minions
@@ -241,7 +241,7 @@ jobs:
           import subprocess
 
           jobs = json.loads(subprocess.check_output(
-              ["salt-run", "--out=json", "jobs.list_jobs"],
+              ["salt-run", "--log-level=error", "--out=json", "jobs.list_jobs"],
               text=True,
           ))
           candidates = [
@@ -255,7 +255,7 @@ jobs:
 
           jid = max(candidates, key=lambda candidate: candidate[0])[0]
           result = json.loads(subprocess.check_output(
-              ["salt-run", "--out=json", "jobs.lookup_jid", jid],
+              ["salt-run", "--log-level=error", "--out=json", "jobs.lookup_jid", jid],
               text=True,
           ))
           failures = [
