@@ -139,7 +139,7 @@ jobs:
                   except FileNotFoundError:
                       continue
                   for line in lines:
-                      match = re.match(r"\s*user\s*:\s*['\"]?([^'\"#\s]+)", line)
+                      match = re.match(r"\s*user\s*:\s*([A-Za-z0-9_.-]+)", line)
                       if match:
                           service_user = match.group(1)
               service_user = service_user or "root"
