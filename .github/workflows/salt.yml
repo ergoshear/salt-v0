@@ -116,6 +116,7 @@ jobs:
           import json
           import os
           import pwd
+          import re
           import subprocess
           import sys
           from pathlib import Path
@@ -127,10 +128,21 @@ jobs:
           service_user = subprocess.check_output(
               ["systemctl", "show", "salt-master", "--property=User", "--value"],
               text=True,
-          ).strip() or "root"
-          if service_user == "root":
-              from salt.config import master_config
-              service_user = master_config("/etc/salt").get("user") or "root"
+          ).strip()
+          if not service_user or service_user == "root":
+              service_user = ""
+              paths = [Path("/etc/salt/master")]
+              paths.extend(sorted(Path("/etc/salt/master.d").glob("*.conf")))
+              for path in paths:
+                  try:
+                      lines = path.read_text().splitlines()
+                  except FileNotFoundError:
+                      continue
+                  for line in lines:
+                      match = re.match(r"\s*user\s*:\s*['\"]?([^'\"#\s]+)", line)
+                      if match:
+                          service_user = match.group(1)
+              service_user = service_user or "root"
           account = pwd.getpwnam(service_user)
           pillar = Path("/etc/salt/tailscale/pillar")
           root = pillar / "hosts"

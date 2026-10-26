@@ -41,6 +41,22 @@ TOKEN_FILE = Path(
 )
 
 
+def configured_master_user():
+    user = ""
+    paths = [Path("/etc/salt/master")]
+    paths.extend(sorted(Path("/etc/salt/master.d").glob("*.conf")))
+    for path in paths:
+        try:
+            lines = path.read_text().splitlines()
+        except FileNotFoundError:
+            continue
+        for line in lines:
+            match = re.match(r"\s*user\s*:\s*['\"]?([^'\"#\s]+)", line)
+            if match:
+                user = match.group(1)
+    return user or "root"
+
+
 def read_token():
     try:
         return TOKEN_FILE.read_text().strip()
@@ -157,11 +173,9 @@ def provision():
         user = subprocess.check_output(
             ["systemctl", "show", "salt-master", "--property=User", "--value"],
             text=True,
-        ).strip() or "root"
-        if user == "root":
-            from salt.config import master_config
-
-            user = master_config("/etc/salt").get("user") or "root"
+        ).strip()
+        if not user or user == "root":
+            user = configured_master_user()
         owner = pwd.getpwnam(user)
         os.chown(DIRECTORY, -1, owner.pw_gid)
         DIRECTORY.chmod(0o710)
