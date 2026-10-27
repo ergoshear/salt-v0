@@ -26,10 +26,10 @@ base:
 #    - mlops.rtx-4090.disabled.StrataQwen38-Flash-Next
 #    - mlops.rtx-4090.disabled.Qwen38-27B-GSQ-RCO-IQ3_S
 #    - mlops.rtx-4090.disabled.Qwen38-Flash-Next
-#  'mlops-node-7':
-#    - mlops.halo-395.disabled.Ornith-1-5-35B
-#  'mlops-node-9':
-#    - mlops.halo-495.disabled.Qwen3-8-27B-GSQ-RCO-IQ3_S
+  'mlops-node-7':
+    - mlops.project-maya
+  'mlops-node-9':
+    - mlops.project-maya
   'mlops-node-*':
     - match: glob
     - mlops.user
