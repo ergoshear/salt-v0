@@ -15,11 +15,11 @@ base:
 #  'L@mlops-node-3,mlops-node-4,mlops-node-6,mlops-node-7,mlops-node-9':
 #    - match: compound
 #    - httpd
-  'mlops-node-3':
-    - mlops.rx9070.studioflow-tts
-    - mlops.rx9070.disabled.kokoro-fastapi-gpu
-  'mlops-node-4':
-    - mlops.r9700.StrataQwen38-Flash-Next
+#  'mlops-node-3':
+#    - mlops.rx9070.disabled.studioflow-tts
+#    - mlops.rx9070.disabled.kokoro-fastapi-gpu
+#  'mlops-node-4':
+#    - mlops.r9700.disabled.StrataQwen38-Flash-Next
   'mlops-node-5':
     - mlops.storage
 #  'mlops-node-6':
