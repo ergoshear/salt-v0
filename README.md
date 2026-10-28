@@ -372,8 +372,10 @@ LVM metadata with a new filesystem. It exports that filesystem read/write over
 NFSv4 on the LAN, restricted to `mlops-node-*.lan` clients. Other Salt minions
 whose IDs match `mlops-node-*` mount `mlops-node-5.lan:/` at `/srv/storage`
 with a persistent fstab entry; node 5 keeps its local disk mount. The NFS
-firewall rule allows TCP 2049 only from the `192.168.202.0/24` LAN. A new
-mlops node must use a matching `.lan` hostname to receive the export.
+server and client mounts use `noatime` to avoid access-time metadata writes
+when reading shared data. The firewall rule allows TCP 2049 only from the
+`192.168.202.0/24` LAN. A new mlops node must use a matching `.lan` hostname to
+receive the export.
 
 ## Security deployment ordering
 

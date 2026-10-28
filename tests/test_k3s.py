@@ -92,6 +92,21 @@ class PillarTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_storage_mounts_disable_access_time_updates(self):
+        client_states = compile_sls(
+            ROOT / "salt/mlops/storage/client.sls", "mlops-node-0",
+        )
+        client_mount = client_states["mlops-storage-client-mount"]["mount.mounted"]
+        client_opts = next(item["opts"] for item in client_mount if "opts" in item)
+        self.assertIn("noatime", client_opts.split(","))
+
+        server_states = compile_sls(
+            ROOT / "salt/mlops/storage/init.sls", "mlops-node-5",
+        )
+        server_mount = server_states["mlops-storage-mount"]["mount.mounted"]
+        server_opts = next(item["opts"] for item in server_mount if "opts" in item)
+        self.assertIn("noatime", server_opts.split(","))
+
     @patch.object(PROVISION.subprocess, "check_output")
     @patch.object(PROVISION, "api")
     def test_provision_scopes_credentials_and_is_idempotent(self, api, output):

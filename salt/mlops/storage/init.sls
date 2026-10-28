@@ -30,7 +30,7 @@ mlops-storage-mount:
     - device: {{ disk }}
     - fstype: ext4
     - mkmnt: True
-    - opts: defaults
+    - opts: defaults,noatime
     - dump: 0
     - pass_num: 2
     - persist: True

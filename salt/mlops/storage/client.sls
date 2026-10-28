@@ -14,7 +14,7 @@ mlops-storage-client-mount:
     - device: mlops-node-5.lan:/
     - fstype: nfs
     - mkmnt: True
-    - opts: rw,hard,vers=4.1,proto=tcp,_netdev,nofail
+    - opts: rw,hard,vers=4.1,proto=tcp,noatime,_netdev,nofail
     - dump: 0
     - pass_num: 0
     - persist: True
